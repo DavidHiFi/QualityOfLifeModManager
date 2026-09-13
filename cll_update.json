@@ -5,10 +5,10 @@
       "id": "launcher",
       "name": "CodLanLauncher.exe",
       "repo": "MestreTM/CLL-Cod-Lan-Launcher",
-      "version": "v1.1.0",
+      "version": "v1.2.0",
       "url": "https://github.com/MestreTM/CLL-Cod-Lan-Launcher/releases/latest/download/CodLanLauncher.exe",
-      "hash": "df81f5d74b42eb00e336cd72dc923376d1d67098",
-      "size": 55109326
+      "hash": "f263100cfb8292aa40939cb1e8a6a73a6a119978",
+      "size": 57437067
     },
     {
       "id": "pu",

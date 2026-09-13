@@ -42,13 +42,33 @@ struct Catalog
     QStringList featured; // ids de mods, na ordem do slider
     QList<Mod> mods;
     bool ok = false;
+    bool fromCache = false;
     QString error;
 };
 
+enum class Presence { Missing, Installed, Update };
+
+struct LocalInstall {
+    QString sourceUrl;
+    QString releaseVersion;
+    QString shortHash;
+    QString folder;
+    QString gameCode;
+};
+
+using InstallIndex = QList<LocalInstall>;
+
 QString catalogUrl();
 QString defaultPath();
+QString cacheDir();
 
 Catalog load(const QString &path = QString());
+
+InstallIndex scanInstalled(const QString &plutoniumRoot);
+Presence presenceOf(const Mod &mod, const InstallIndex &index);
+
+QPixmap cachedRemotePixmap(const QString &url);
+void storeRemotePixmap(const QString &url, const QByteArray &bytes);
 
 // Caminho absoluto / recurso qrc para uma referencia do JSON.
 // "media/x.jpg" -> <projectRoot>/media/x.jpg ou :/media/x.jpg

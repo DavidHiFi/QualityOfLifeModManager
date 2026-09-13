@@ -8,6 +8,7 @@ class QStackedWidget;
 class QPushButton;
 class QLabel;
 class QWidget;
+class QVBoxLayout;
 class PlayPage;
 class ModsPage;
 class ServerPage;
@@ -23,7 +24,7 @@ public:
     Q_INVOKABLE void debugShowPage(int index) { showTool(index); }
 
 private slots:
-    void onLaunchGame(const QString &gameId, bool multiplayer);
+    void onLaunchGame(const QString &gameId, const QString &mode);
     void onStopGame(const QString &gameId);
     void onLaunchServer(const QString &configSelection, const QString &port);
     void onStopServer();
@@ -41,6 +42,11 @@ private:
     void applyHeader(int toolIndex);
     void applyHomeVisibility();
     void retranslate();
+    void setOrganizeGames(bool on);
+    void persistGameOrder();
+    void updateOrganizeOverlay();
+    bool eventFilter(QObject *obj, QEvent *event) override;
+    void resizeEvent(QResizeEvent *event) override;
 
     AppSettings m_settings;
     QStackedWidget *m_stack = nullptr;
@@ -60,6 +66,15 @@ private:
     QLabel *m_sidebarTools = nullptr;
 
     QPushButton *m_homeNavBtn = nullptr;
+    QPushButton *m_editGamesBtn = nullptr;
+    QWidget *m_sidebar = nullptr;
+    QWidget *m_gamesBox = nullptr;
+    QVBoxLayout *m_gamesLay = nullptr;
+    QWidget *m_organizeOverlay = nullptr;
+    QWidget *m_organizeHint = nullptr;
+    QPushButton *m_dragBtn = nullptr;
+    int m_dragOffset = 0;
+    bool m_organizeGames = false;
     QList<QPushButton *> m_gameButtons;
     QList<QPushButton *> m_toolButtons;
     int m_gameIndex = 2; // BO2

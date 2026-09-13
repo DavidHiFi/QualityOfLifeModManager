@@ -7,7 +7,6 @@
 #include <QObject>
 #include <QSettings>
 
-// ProjectRoot()
 QString AppSettings::projectRoot()
 {
     return QCoreApplication::applicationDirPath();
@@ -47,15 +46,15 @@ void AppSettings::resolveStoredPaths()
     bo1 = resolvePath(bo1);
     bo2 = resolvePath(bo2);
     mw3 = resolvePath(mw3);
+    aw = resolvePath(aw);
+    bo3 = resolvePath(bo3);
 }
 
-// LocalPuDir()
 QString AppSettings::localPuDir()
 {
     return QDir(projectRoot()).filePath("pu");
 }
 
-// LocalPuBootstrapper()
 QString AppSettings::localPuBootstrapper()
 {
     return QDir(localPuDir()).filePath("bin/plutonium-bootstrapper-win32.exe");
@@ -102,14 +101,12 @@ QString AppSettings::plutoniumRootSummary(const QString &root)
     return bits.join(QStringLiteral(" · "));
 }
 
-// UseLocalPuIfPresent(GENERAL, settings)
 void AppSettings::useLocalPuIfPresent()
 {
     if (QFileInfo::exists(localPuBootstrapper()))
         plutoniumInstance = localPuDir();
 }
 
-// LoadFromINI(GENERAL, settings)
 bool AppSettings::loadFromIni()
 {
     if (!QFileInfo::exists(iniPath()))
@@ -123,18 +120,31 @@ bool AppSettings::loadFromIni()
     bo1               = ini.value("black ops 1 folder", bo1).toString();
     bo2               = ini.value("black ops 2 folder", bo2).toString();
     mw3               = ini.value("modernwarfare 3 folder", mw3).toString();
+    aw                = ini.value("advanced warfare folder", aw).toString();
+    bo3               = ini.value("black ops 3 folder", bo3).toString();
     theme             = ini.value("theme", theme).toString();
     setupCompleted    = ini.value("setup completed", false).toBool();
     language          = ini.value("language", language).toString();
     homeEnabled       = ini.value("home enabled", true).toBool();
-    if (!setupCompleted && (!username.isEmpty() || !waw.isEmpty() || !bo1.isEmpty() || !bo2.isEmpty() || !mw3.isEmpty()))
+    gameOrder         = ini.value("game order").toString().split(QLatin1Char(','), Qt::SkipEmptyParts);
+    gameOrderHintSeen = ini.value("game order hint seen", false).toBool();
+    checkUpdatesOnStart = ini.value("check updates on start", true).toBool();
+    bo3Client         = ini.value("bo3 client", QStringLiteral("cll")).toString();
+    if (bo3Client != QLatin1String("competitive"))
+        bo3Client = QStringLiteral("cll");
+    bo3ClientChosen   = ini.value("bo3 client chosen", false).toBool();
+    awClientReady     = ini.value("aw client ready", false).toBool();
+    bo3CllArgs        = ini.value("bo3 cll args",
+                                  QStringLiteral("-launch -noconsole -nowatermark -nointro")).toString();
+    bo3CompArgs       = ini.value("bo3 competitive args",
+                                  QStringLiteral("-nointro")).toString();
+    if (!setupCompleted && (!username.isEmpty() || !waw.isEmpty() || !bo1.isEmpty() || !bo2.isEmpty() || !mw3.isEmpty() || !aw.isEmpty() || !bo3.isEmpty()))
         setupCompleted = true;
     ini.endGroup();
     resolveStoredPaths();
     return true;
 }
 
-// SaveToINI(GENERAL, settings, values)
 void AppSettings::saveToIni() const
 {
     AppSettings copy = *this;
@@ -147,10 +157,20 @@ void AppSettings::saveToIni() const
     ini.setValue("black ops 1 folder", copy.bo1);
     ini.setValue("black ops 2 folder", copy.bo2);
     ini.setValue("modernwarfare 3 folder", copy.mw3);
+    ini.setValue("advanced warfare folder", copy.aw);
+    ini.setValue("black ops 3 folder", copy.bo3);
     ini.setValue("theme", copy.theme);
     ini.setValue("setup completed", copy.setupCompleted);
     ini.setValue("language", copy.language);
     ini.setValue("home enabled", copy.homeEnabled);
+    ini.setValue("game order", copy.gameOrder.join(QLatin1Char(',')));
+    ini.setValue("game order hint seen", copy.gameOrderHintSeen);
+    ini.setValue("check updates on start", copy.checkUpdatesOnStart);
+    ini.setValue("bo3 client", copy.bo3Client);
+    ini.setValue("bo3 client chosen", copy.bo3ClientChosen);
+    ini.setValue("aw client ready", copy.awClientReady);
+    ini.setValue("bo3 cll args", copy.bo3CllArgs);
+    ini.setValue("bo3 competitive args", copy.bo3CompArgs);
     ini.endGroup();
     ini.sync();
 }
@@ -160,7 +180,6 @@ void AppSettings::applyDefaultPlutoniumInstanceIfEmpty()
     if (!plutoniumInstance.isEmpty())
         return;
 
-    // Uses QDir::homePath() so this also works outside Windows.
     const QString candidate = QDir::homePath() + "/AppData/Local/Plutonium";
     if (QDir(candidate).exists())
         plutoniumInstance = candidate;
@@ -172,17 +191,14 @@ QString AppSettings::gameFolder(const QString &gameIdName) const
     if (gameIdName == "Black ops")          return bo1;
     if (gameIdName == "Black ops II")       return bo2;
     if (gameIdName == "Modern Warfare 3")   return mw3;
+    if (gameIdName == "Advanced Warfare")   return aw;
+    if (gameIdName == "Black ops III")      return bo3;
     return QString();
 }
 
-//   settings[VERSIONNUM] = "1.1.0"
-//   settings[THEME] = "DarkAmber"
-//   if os.path.isfile("LanLauncher.ini"): LoadFromINI(...)
-//   UseLocalPuIfPresent(...)
-//   if settings[PLUTONIUMINSTANCE] == '': ... default AppData ...
 AppSettings AppSettings::loadForStartup()
 {
-    AppSettings s; // ja nasce com versionNum = "1.1.0" e theme = "DarkAmber"
+    AppSettings s;
     s.loadFromIni();
     if (s.language.trimmed().isEmpty())
         s.language = QStringLiteral("en");

@@ -1,19 +1,22 @@
 <RCC>
     <qresource prefix="/">
-        <file>style/dark.qss</file>
+        <file>style/base.qss</file>
         <file>i18n/en.json</file>
         <file>i18n/pt_BR.json</file>
         <file>i18n/es.json</file>
         <file>i18n/ru.json</file>
         <file>icons/app.svg</file>
+        <file>icons/icon.ico</file>
         <file>icons/main.svg</file>
         <file>icons/mods.svg</file>
         <file>icons/server.svg</file>
         <file>icons/misc.svg</file>
+        <file>icons/pen.svg</file>
         <file>icons/import.svg</file>
         <file>icons/folder.svg</file>
         <file>icons/play.svg</file>
         <file>icons/check.svg</file>
+        <file>icons/check_light.svg</file>
         <file>media/t4_icon.jpg</file>
         <file>media/t4_logo.png</file>
         <file>media/t4_bg_mp.jpg</file>
@@ -29,5 +32,14 @@
         <file>media/iw5_icon.jpg</file>
         <file>media/iw5_logo.png</file>
         <file>media/iw5_bg_mp.jpg</file>
+        <file>media/s1_icon.jpg</file>
+        <file>media/s1_logo.png</file>
+        <file>media/s1_bg_mp.jpg</file>
+        <file>media/s1_bg_zm.jpg</file>
+        <file>media/s1_bg_sp.jpg</file>
+        <file>media/s1_bg_sv.jpg</file>
+        <file>media/t7_icon.jpg</file>
+        <file>media/t7_logo.png</file>
+        <file>media/t7_bg_mp.jpg</file>
     </qresource>
 </RCC>

@@ -1,7 +1,11 @@
 #pragma once
+#include "Theme.h"
 #include <QCheckBox>
+#include <QAbstractItemView>
+#include <QComboBox>
 #include <QRadioButton>
 #include <QEvent>
+#include <QWheelEvent>
 #include <QFontMetrics>
 #include <QPainter>
 #include <QPainterPath>
@@ -13,15 +17,40 @@
 // label itself and reports its own sizeHint. No Q_OBJECT — no moc needed.
 namespace Ui {
 
+// Combo that ignores wheel unless the popup is open (so page scroll does not change the value).
+class ComboBox : public QComboBox
+{
+public:
+    using QComboBox::QComboBox;
+protected:
+    void wheelEvent(QWheelEvent *e) override
+    {
+        if (view() && view()->isVisible())
+            QComboBox::wheelEvent(e);
+        else
+            e->ignore();
+    }
+};
+
 namespace detail {
-inline const QColor kText(0xd1, 0xd2, 0xe3);
-inline const QColor kTextOn(0xff, 0xff, 0xff);
-inline const QColor kTextOff(0x6b, 0x6c, 0x86);
-inline const QColor kFill(0x13, 0x14, 0x26);
-inline const QColor kBorder(0x4a, 0x4d, 0x68);
-inline const QColor kAccent(0x91, 0x84, 0xd9);
-inline const QColor kAccentLight(0xcf, 0xc7, 0xf2);
-inline const QColor kInk(0x14, 0x12, 0x1f);
+// Todas as cores vem do tema atual (Nocturne / Classic Things).
+inline QColor kText()        { return Theme::color("TEXT"); }
+inline QColor kTextOn()      { return Theme::color("TEXT_STRONG"); }
+inline QColor kTextOff()     { return Theme::color("DISABLED_TEXT"); }
+inline QColor kFill()        { return Theme::color("FIELD"); }
+inline QColor kBorder()      { return Theme::color("LINE_STRONG"); }
+inline QColor kAccent()      { return Theme::color("ACCENT"); }
+inline QColor kAccentLight() { return Theme::color("ACCENT_LIGHT"); }
+inline QColor kAccentDark()  { return Theme::color("ACCENT_DARK"); }
+inline QColor kHoverFill()   { return Theme::color("SURFACE_HI"); }
+inline QColor kOffFill()     { return Theme::color("DISABLED_BG"); }
+inline QColor kOffLine()     { return Theme::color("DISABLED_LINE"); }
+inline QColor kInk()         { return Theme::color("ACCENT_TEXT"); }
+inline int    kR()           { return Theme::radius() ? 5 : 0; }
+// Widgets sobre a arte do jogo usam texto claro em qualquer tema:
+// basta setProperty("onArt", true).
+inline QColor kArtText()     { return Theme::color("HERO_SUB"); }
+inline QColor kArtTextOn()   { return Theme::color("HERO_TEXT"); }
 
 constexpr int kBox = 18;   // lado do indicador
 constexpr int kGap = 10;   // espaco entre indicador e texto
@@ -74,29 +103,29 @@ protected:
 
         QRectF box(1.0, (height() - kBox) / 2.0, kBox - 1.0, kBox - 1.0);
 
-        QColor border = on ? kAccentLight : kBorder;
-        QColor fill = on ? kAccent : kFill;
+        const int rad = kR();
+        p.setRenderHint(QPainter::Antialiasing, rad > 0);
+
+        QColor border = on ? kAccent() : kBorder();
+        QColor fill = on ? kAccent() : kFill();
         if (hov) {
-            border = on ? QColor(0xe4, 0xdf, 0xfa) : kAccent;
-            if (on)
-                fill = QColor(0xa7, 0x9d, 0xe2);
-            else
-                fill = QColor(0x1b, 0x1d, 0x31);
+            border = kAccent();
+            fill = on ? kAccentLight() : kHoverFill();
         }
         if (off) {
-            border = QColor(0x2d, 0x30, 0x45);
-            fill = on ? QColor(0x4a, 0x44, 0x68) : QColor(0x19, 0x1b, 0x28);
+            border = kOffLine();
+            fill = on ? kOffLine() : kOffFill();
         }
 
         if (hasFocus()) {
-            p.setPen(QPen(kAccent, 1.0));
+            p.setPen(QPen(kAccent(), 1.0));
             p.setBrush(Qt::NoBrush);
-            p.drawRoundedRect(box.adjusted(-3, -3, 3, 3), 7, 7);
+            p.drawRoundedRect(box.adjusted(-3, -3, 3, 3), rad ? 7 : 0, rad ? 7 : 0);
         }
 
         p.setPen(QPen(border, 2.0));
         p.setBrush(fill);
-        p.drawRoundedRect(box, 5, 5);
+        p.drawRoundedRect(box, rad, rad);
 
         if (on) {
             // checkmark
@@ -105,13 +134,17 @@ protected:
             tick.lineTo(box.left() + box.width() * 0.44, box.top() + box.height() * 0.73);
             tick.lineTo(box.left() + box.width() * 0.78, box.top() + box.height() * 0.29);
             p.setBrush(Qt::NoBrush);
-            p.setPen(QPen(off ? QColor(0x9a, 0x9a, 0xb0) : kInk, 2.4,
+            p.setRenderHint(QPainter::Antialiasing, true);
+            p.setPen(QPen(off ? kTextOff() : kInk(), 2.4,
                           Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
             p.drawPath(tick);
         }
 
         const QRect textRect(kBox + kGap, 0, width() - kBox - kGap, height());
-        p.setPen(off ? kTextOff : (on || hov ? kTextOn : kText));
+        const bool art = property("onArt").toBool();
+        p.setPen(off ? kTextOff()
+                     : (on || hov ? (art ? kArtTextOn() : kTextOn())
+                                  : (art ? kArtText() : kText())));
         p.setFont(font());
         p.drawText(textRect, Qt::AlignLeft | Qt::AlignVCenter, text());
     }
@@ -125,13 +158,14 @@ public:
     {
         setAttribute(Qt::WA_Hover, true);
         setCursor(Qt::PointingHandCursor);
+        setContentsMargins(6, 2, 4, 2);
     }
 
     QSize sizeHint() const override
     {
         const QFontMetrics fm(font());
-        const int w = detail::kBox + detail::kGap + fm.horizontalAdvance(text()) + 4;
-        const int h = qMax(detail::kBox + 8, fm.height() + 8);
+        const int w = 8 + detail::kBox + detail::kGap + fm.horizontalAdvance(text()) + 8;
+        const int h = qMax(detail::kBox + 14, fm.height() + 12);
         return QSize(w, h);
     }
     QSize minimumSizeHint() const override { return sizeHint(); }
@@ -162,30 +196,44 @@ protected:
         const bool hov = underMouse() && isEnabled();
         const bool off = !isEnabled();
 
-        QRectF circle(1.0, (height() - kBox) / 2.0, kBox - 1.0, kBox - 1.0);
-        QColor border = on ? kAccent : (hov ? kAccent : kBorder);
+        const bool square = Theme::isSquare();
+        p.setRenderHint(QPainter::Antialiasing, !square);
+
+        QRectF circle(5.0, (height() - kBox) / 2.0, kBox, kBox);
+        QColor border = (on || hov) ? kAccent() : kBorder();
         if (off)
-            border = QColor(0x2d, 0x30, 0x45);
+            border = kOffLine();
 
         if (hasFocus()) {
-            p.setPen(QPen(kAccent, 1.0));
+            p.setPen(QPen(kAccent(), 1.0));
             p.setBrush(Qt::NoBrush);
-            p.drawEllipse(circle.adjusted(-3, -3, 3, 3));
+            if (square)
+                p.drawRect(circle.adjusted(-3, -3, 3, 3));
+            else
+                p.drawEllipse(circle.adjusted(-3, -3, 3, 3));
         }
 
         p.setPen(QPen(border, 2.0));
-        p.setBrush(off ? QColor(0x19, 0x1b, 0x28)
-                       : (hov && !on ? QColor(0x1b, 0x1d, 0x31) : kFill));
-        p.drawEllipse(circle);
+        p.setBrush(off ? kOffFill() : (hov && !on ? kHoverFill() : kFill()));
+        if (square)
+            p.drawRect(circle);
+        else
+            p.drawEllipse(circle);
 
         if (on) {
             p.setPen(Qt::NoPen);
-            p.setBrush(off ? QColor(0x4a, 0x44, 0x68) : kAccent);
-            p.drawEllipse(circle.adjusted(4, 4, -4, -4));
+            p.setBrush(off ? kOffLine() : kAccent());
+            if (square)
+                p.drawRect(circle.adjusted(4, 4, -4, -4));
+            else
+                p.drawEllipse(circle.adjusted(4, 4, -4, -4));
         }
 
         const QRect textRect(kBox + kGap, 0, width() - kBox - kGap, height());
-        p.setPen(off ? kTextOff : (on || hov ? kTextOn : kText));
+        const bool art = property("onArt").toBool();
+        p.setPen(off ? kTextOff()
+                     : (on || hov ? (art ? kArtTextOn() : kTextOn())
+                                  : (art ? kArtText() : kText())));
         p.setFont(font());
         p.drawText(textRect, Qt::AlignLeft | Qt::AlignVCenter, text());
     }

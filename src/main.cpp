@@ -1,4 +1,5 @@
 #include "AppSettings.h"
+#include "Version.h"
 #include "GameLauncher.h"
 #include "MainWindow.h"
 
@@ -60,7 +61,7 @@ int main(int argc, char *argv[])
 {
     QApplication app(argc, argv);
     QApplication::setApplicationName("Cod Lan Launcher");
-    QApplication::setApplicationVersion("1.1.0");
+    QApplication::setApplicationVersion(QStringLiteral(CLL_VERSION));
     QApplication::setOrganizationName("MestreTM");
     QDir::setCurrent(QCoreApplication::applicationDirPath());
 

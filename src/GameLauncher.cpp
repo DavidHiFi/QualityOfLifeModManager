@@ -4,12 +4,18 @@
 #include "Storage.h"
 
 #include <QDir>
+#include <QHash>
+#include <QList>
 #include <QFileInfo>
 #include <QProcess>
 #include <QStringList>
+#include <QThread>
+#include <QtConcurrent>
+#include <atomic>
 
 #ifdef Q_OS_WIN
 #  include <windows.h>
+#  include <tlhelp32.h>
 #else
 #  include <signal.h>
 #  include <errno.h>
@@ -18,6 +24,7 @@
 namespace {
 
 const QString kExePath = "/bin/plutonium-bootstrapper-win32.exe";
+std::atomic<qint64> g_errorWatchPid{0};
 
 QStringList splitFlag(const QString &flag)
 {
@@ -31,6 +38,78 @@ namespace GameLauncher {
 Result launch(AppSettings &settings, const QString &modSelection)
 {
     Result r;
+
+    if (settings.gameId == QLatin1String("Advanced Warfare")) {
+        settings.activeGame = settings.aw;
+        const QString exe = QDir(settings.activeGame).filePath(QStringLiteral("s1.exe"));
+        if (settings.activeGame.isEmpty() || !QFileInfo::exists(exe)) {
+            r.hasError = true;
+            r.errorMsg = Dialogs::Msg::S1;
+            return r;
+        }
+        QStringList args;
+        if (settings.modeId == QLatin1String("s1sp"))
+            args << QStringLiteral("-singleplayer");
+        else if (settings.modeId == QLatin1String("s1sv"))
+            args << QStringLiteral("-survival");
+        else if (settings.modeId == QLatin1String("s1zm"))
+            args << QStringLiteral("-zombies");
+        else
+            args << QStringLiteral("-multiplayer");
+        args << QStringLiteral("-noconsole") << QStringLiteral("-nowatermark");
+        if (!settings.username.isEmpty())
+            args << QStringLiteral("-nick") << settings.username;
+        qint64 pid = 0;
+        if (!QProcess::startDetached(exe, args, settings.activeGame, &pid)) {
+            r.hasError = true;
+            r.errorMsg = Dialogs::Msg::S1;
+            return r;
+        }
+        r.ok = true;
+        r.pid = pid;
+        return r;
+    }
+
+    if (settings.gameId == QLatin1String("Black ops III")) {
+        settings.activeGame = settings.bo3;
+        QString exe;
+        for (const QString &name : {QStringLiteral("boiii.exe"), QStringLiteral("t7.exe"),
+                                    QStringLiteral("bo3.exe"), QStringLiteral("BlackOps3.exe")}) {
+            const QString cand = QDir(settings.activeGame).filePath(name);
+            if (QFileInfo::exists(cand)) {
+                exe = cand;
+                break;
+            }
+        }
+        if (settings.activeGame.isEmpty() || exe.isEmpty()) {
+            r.hasError = true;
+            r.errorMsg = Dialogs::Msg::T7;
+            return r;
+        }
+        QStringList args;
+        const bool competitive = settings.bo3Client == QLatin1String("competitive");
+        const QString raw = competitive ? settings.bo3CompArgs.trimmed()
+                                        : settings.bo3CllArgs.trimmed();
+        if (!raw.isEmpty())
+            args = QProcess::splitCommand(raw);
+        if (!competitive && !settings.username.isEmpty())
+            args << QStringLiteral("-nick") << settings.username;
+        qint64 pid = 0;
+        if (!QProcess::startDetached(exe, args, settings.activeGame, &pid)) {
+            r.hasError = true;
+            r.errorMsg = Dialogs::Msg::T7;
+            return r;
+        }
+        QThread::msleep(400);
+        const qint64 live = findProcessInFolder(settings.activeGame);
+        if (live > 0)
+            pid = live;
+        r.ok = true;
+        r.pid = pid;
+        if (competitive)
+            startErrorDialogWatch(pid);
+        return r;
+    }
 
     if (settings.username.isEmpty()) {
         r.hasError = true;
@@ -171,9 +250,199 @@ bool terminatePid(qint64 pid)
     if (pid <= 0)
         return false;
 #ifdef Q_OS_WIN
+    if (g_errorWatchPid.load() == pid)
+        g_errorWatchPid.store(0);
+#endif
+#ifdef Q_OS_WIN
     return QProcess::startDetached("taskkill", {"/PID", QString::number(pid), "/T", "/F"});
 #else
     return ::kill(static_cast<pid_t>(pid), SIGTERM) == 0 || errno == ESRCH;
+#endif
+}
+
+#ifdef Q_OS_WIN
+bool processRelatedTo(DWORD rootPid, DWORD pid)
+{
+    if (pid == 0 || rootPid == 0)
+        return false;
+    if (pid == rootPid)
+        return true;
+    HANDLE snap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+    if (snap == INVALID_HANDLE_VALUE)
+        return false;
+    PROCESSENTRY32W pe;
+    pe.dwSize = sizeof(pe);
+    QHash<DWORD, DWORD> parent;
+    if (Process32FirstW(snap, &pe)) {
+        do {
+            parent.insert(pe.th32ProcessID, pe.th32ParentProcessID);
+        } while (Process32NextW(snap, &pe));
+    }
+    CloseHandle(snap);
+    DWORD cur = pid;
+    for (int i = 0; i < 16 && cur && cur != rootPid; ++i)
+        cur = parent.value(cur, 0);
+    return cur == rootPid;
+}
+
+bool clickDialogButton(HWND dialog)
+{
+    const wchar_t *labels[] = {L"OK", L"Ok", L"Fechar", L"Close", L"&OK"};
+    for (const wchar_t *label : labels) {
+        HWND btn = FindWindowExW(dialog, nullptr, L"Button", label);
+        if (btn) {
+            SendMessageW(btn, BM_CLICK, 0, 0);
+            return true;
+        }
+    }
+    HWND btn = GetDlgItem(dialog, IDOK);
+    if (btn) {
+        SendMessageW(btn, BM_CLICK, 0, 0);
+        return true;
+    }
+    return false;
+}
+
+struct EnumCtx { DWORD rootPid; };
+
+BOOL CALLBACK enumErrorDialogs(HWND hwnd, LPARAM lp)
+{
+    auto *ctx = reinterpret_cast<EnumCtx *>(lp);
+    wchar_t cls[64] = {};
+    wchar_t title[64] = {};
+    GetClassNameW(hwnd, cls, 64);
+    GetWindowTextW(hwnd, title, 64);
+    if (lstrcmpW(cls, L"#32770") != 0 || lstrcmpW(title, L"Error") != 0)
+        return TRUE;
+    DWORD wndPid = 0;
+    GetWindowThreadProcessId(hwnd, &wndPid);
+    if (!processRelatedTo(ctx->rootPid, wndPid))
+        return TRUE;
+    clickDialogButton(hwnd);
+    if (IsWindow(hwnd))
+        PostMessageW(hwnd, WM_CLOSE, 0, 0);
+    return TRUE;
+}
+
+void closeErrorDialogs(DWORD rootPid)
+{
+    EnumCtx ctx{rootPid};
+    EnumWindows(enumErrorDialogs, reinterpret_cast<LPARAM>(&ctx));
+}
+#endif
+
+#ifdef Q_OS_WIN
+QString processImagePath(DWORD pid)
+{
+    HANDLE h = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid);
+    if (!h)
+        return {};
+    wchar_t buf[MAX_PATH] = {};
+    DWORD n = MAX_PATH;
+    const BOOL ok = QueryFullProcessImageNameW(h, 0, buf, &n);
+    CloseHandle(h);
+    if (!ok)
+        return {};
+    return QDir::cleanPath(QString::fromWCharArray(buf));
+}
+
+bool pathIsUnder(const QString &filePath, const QString &folder)
+{
+    const QString root = QDir::cleanPath(folder).toLower() + QLatin1Char('/');
+    const QString path = QDir::cleanPath(filePath).toLower();
+    return path.startsWith(root) || path == QDir::cleanPath(folder).toLower();
+}
+#endif
+
+qint64 findProcessInFolder(const QString &folder)
+{
+    if (folder.isEmpty())
+        return 0;
+#ifdef Q_OS_WIN
+    HANDLE snap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+    if (snap == INVALID_HANDLE_VALUE)
+        return 0;
+    PROCESSENTRY32W pe;
+    pe.dwSize = sizeof(pe);
+    qint64 found = 0;
+    if (Process32FirstW(snap, &pe)) {
+        do {
+            const QString img = processImagePath(pe.th32ProcessID);
+            if (!img.isEmpty() && pathIsUnder(img, folder)) {
+                found = static_cast<qint64>(pe.th32ProcessID);
+                break;
+            }
+        } while (Process32NextW(snap, &pe));
+    }
+    CloseHandle(snap);
+    return found;
+#else
+    Q_UNUSED(folder);
+    return 0;
+#endif
+}
+
+void terminateFolderProcesses(const QString &folder)
+{
+    g_errorWatchPid.store(0);
+    if (folder.isEmpty())
+        return;
+#ifdef Q_OS_WIN
+    HANDLE snap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+    if (snap == INVALID_HANDLE_VALUE)
+        return;
+    PROCESSENTRY32W pe;
+    pe.dwSize = sizeof(pe);
+    QList<DWORD> pids;
+    if (Process32FirstW(snap, &pe)) {
+        do {
+            const QString img = processImagePath(pe.th32ProcessID);
+            if (!img.isEmpty() && pathIsUnder(img, folder))
+                pids << pe.th32ProcessID;
+        } while (Process32NextW(snap, &pe));
+    }
+    CloseHandle(snap);
+    for (DWORD pid : pids) {
+        HANDLE h = OpenProcess(PROCESS_TERMINATE, FALSE, pid);
+        if (h) {
+            TerminateProcess(h, 1);
+            CloseHandle(h);
+        }
+        QProcess::execute(QStringLiteral("taskkill"),
+                          {QStringLiteral("/F"), QStringLiteral("/T"),
+                           QStringLiteral("/PID"), QString::number(pid)});
+    }
+    const QStringList names = {
+        QStringLiteral("boiii.exe"), QStringLiteral("BlackOps3.exe"),
+        QStringLiteral("t7.exe"), QStringLiteral("bo3.exe"),
+        QStringLiteral("s1.exe")
+    };
+    for (const QString &name : names) {
+        QProcess::execute(QStringLiteral("taskkill"),
+                          {QStringLiteral("/F"), QStringLiteral("/T"),
+                           QStringLiteral("/IM"), name});
+    }
+#else
+    Q_UNUSED(folder);
+#endif
+}
+
+void startErrorDialogWatch(qint64 pid)
+{
+#ifndef Q_OS_WIN
+    Q_UNUSED(pid);
+#else
+    if (pid <= 0)
+        return;
+    g_errorWatchPid.store(pid);
+    const QFuture<void> future = QtConcurrent::run([pid]() {
+        const DWORD root = static_cast<DWORD>(pid);
+        while (g_errorWatchPid.load() == pid && isPidRunning(pid)) {
+            closeErrorDialogs(root);
+            QThread::msleep(400);
+        }
+    });
+    Q_UNUSED(future);
 #endif
 }
 

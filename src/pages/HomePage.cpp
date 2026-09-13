@@ -1,4 +1,5 @@
 #include "HomePage.h"
+#include "../Theme.h"
 #include "AppSettings.h"
 
 #include <QApplication>
@@ -28,7 +29,7 @@
 namespace {
 
 constexpr int kCardMinWidth = 210;
-constexpr int kRadius = 8;
+inline int kRadius() { return Theme::radius(); }
 
 QNetworkRequest remoteImageRequest(const QString &url)
 {
@@ -74,6 +75,11 @@ public:
     {
         setMinimumHeight(120);
         setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+        // Troca de tema muda o raio: descarta o recorte em cache.
+        QObject::connect(&ThemeHub::instance(), &ThemeHub::themeChanged, this, [this]() {
+            m_cache = QPixmap();
+            update();
+        });
     }
     void setSource(const QPixmap &pm) { m_src = pm; m_cache = QPixmap(); update(); }
     void setBadge(const QString &text) { m_badge = text; update(); }
@@ -95,11 +101,11 @@ protected:
         QPainter p(this);
         p.setRenderHints(QPainter::Antialiasing | QPainter::SmoothPixmapTransform, true);
         QPainterPath path;
-        path.addRoundedRect(QRectF(rect()), kRadius, kRadius);
-        p.fillPath(path, QColor("#1b1d2e"));
+        path.addRoundedRect(QRectF(rect()), kRadius(), kRadius());
+        p.fillPath(path, Theme::color("SURFACE"));
 
         if (m_cache.isNull() && !m_src.isNull())
-            m_cache = coverPixmap(m_src, size(), kRadius);
+            m_cache = coverPixmap(m_src, size(), kRadius());
         if (!m_cache.isNull())
             p.drawPixmap(0, 0, m_cache);
 
@@ -111,7 +117,7 @@ protected:
             const QRect text = p.fontMetrics().boundingRect(m_badge.toUpper());
             const QRect box(8, 8, text.width() + 14, text.height() + 6);
             QPainterPath bp;
-            bp.addRoundedRect(QRectF(box), 4, 4);
+            bp.addRoundedRect(QRectF(box), kRadius() ? 4 : 0, kRadius() ? 4 : 0);
             p.fillPath(bp, QColor(12, 13, 22, 190));
             p.setPen(QColor("#cfd1dc"));
             p.drawText(box, Qt::AlignCenter, m_badge.toUpper());
@@ -127,7 +133,8 @@ private:
 class ModCard : public QFrame
 {
 public:
-    ModCard(const HomeCatalog::Mod &mod, const QString &gameName, QWidget *parent = nullptr)
+    ModCard(const HomeCatalog::Mod &mod, const QString &gameName,
+            HomeCatalog::Presence presence, QWidget *parent = nullptr)
         : QFrame(parent), m_id(mod.id)
     {
         setObjectName("ModCard");
@@ -164,6 +171,16 @@ public:
 
         body->addWidget(name);
         body->addWidget(author);
+        if (presence != HomeCatalog::Presence::Missing) {
+            auto *st = new QLabel(presence == HomeCatalog::Presence::Update
+                                      ? QObject::tr("Atualizar")
+                                      : QObject::tr("Instalado"),
+                                  this);
+            st->setObjectName(presence == HomeCatalog::Presence::Update
+                                  ? QStringLiteral("ModCardUpdate")
+                                  : QStringLiteral("ModCardInstalled"));
+            body->addWidget(st);
+        }
         body->addSpacing(2);
         body->addWidget(meta);
         v->addLayout(body);
@@ -204,6 +221,7 @@ public:
         QString logoUrl;
         QPixmap bg;
         QPixmap logo;
+        HomeCatalog::Presence presence = HomeCatalog::Presence::Missing;
     };
 
     explicit HeroSlider(QWidget *parent = nullptr) : QWidget(parent)
@@ -324,10 +342,12 @@ public:
 
     void retranslate()
     {
-        if (m_install)
-            m_install->setText(QObject::tr("Instalar"));
         if (m_details)
             m_details->setText(QObject::tr("Detalhes"));
+        if (m_install && m_index >= 0 && m_index < m_slides.size())
+            applyInstallLabel(m_slides[m_index].presence);
+        else if (m_install)
+            m_install->setText(QObject::tr("Instalar"));
     }
 
     std::function<void(QString)> onInstall;
@@ -343,20 +363,33 @@ protected:
         m_prevCache = QPixmap();
     }
 
+    void showEvent(QShowEvent *e) override
+    {
+        QWidget::showEvent(e);
+        if (!property("themeHooked").toBool()) {
+            setProperty("themeHooked", true);
+            QObject::connect(&ThemeHub::instance(), &ThemeHub::themeChanged, this, [this]() {
+                m_cache = QPixmap();
+                m_prevCache = QPixmap();
+                update();
+            });
+        }
+    }
+
     void paintEvent(QPaintEvent *) override
     {
         QPainter p(this);
         p.setRenderHints(QPainter::Antialiasing | QPainter::SmoothPixmapTransform, true);
 
         QPainterPath clip;
-        clip.addRoundedRect(QRectF(rect()), 14, 14);
+        clip.addRoundedRect(QRectF(rect()), kRadius() ? 14 : 0, kRadius() ? 14 : 0);
         p.setClipPath(clip);
-        p.fillPath(clip, QColor("#101120"));
+        p.fillPath(clip, Theme::color("BG_DEEP"));
 
         const Slide *s = (m_index < m_slides.size()) ? &m_slides[m_index] : nullptr;
         if (s && !s->bg.isNull()) {
             if (m_cache.isNull())
-                m_cache = coverPixmap(s->bg, size(), 14);
+                m_cache = coverPixmap(s->bg, size(), kRadius() ? 14 : 0);
             const qreal t = m_fade.state() == QAbstractAnimation::Running
                                 ? m_fade.currentValue().toReal() : 1.0;
             if (!m_prevCache.isNull() && t < 1.0)
@@ -417,11 +450,24 @@ private:
         }
     }
 
+    void applyInstallLabel(HomeCatalog::Presence presence)
+    {
+        if (!m_install)
+            return;
+        if (presence == HomeCatalog::Presence::Update)
+            m_install->setText(QObject::tr("Atualizar"));
+        else if (presence == HomeCatalog::Presence::Installed)
+            m_install->setText(QObject::tr("Reinstalar"));
+        else
+            m_install->setText(QObject::tr("Instalar"));
+    }
+
     void apply(bool animate)
     {
         if (m_index >= m_slides.size())
             return;
         const Slide &s = m_slides[m_index];
+        applyInstallLabel(s.presence);
 
         if (!s.logo.isNull()) {
             m_logo->setPixmap(s.logo.scaled(QSize(230, 30), Qt::KeepAspectRatio, Qt::SmoothTransformation));
@@ -474,6 +520,7 @@ class ModDetailsDialog : public QDialog
 public:
     ModDetailsDialog(const HomeCatalog::Mod &mod,
                      const QString &gameName,
+                     HomeCatalog::Presence presence,
                      const QPixmap &cachedCover,
                      QNetworkAccessManager *net,
                      std::function<void(QString, QPixmap)> onCoverFetched,
@@ -501,9 +548,11 @@ public:
                 reply->deleteLater();
                 if (reply->error() != QNetworkReply::NoError)
                     return;
+                const QByteArray bytes = reply->readAll();
                 QPixmap pm;
-                if (!pm.loadFromData(reply->readAll()))
+                if (!pm.loadFromData(bytes))
                     return;
+                HomeCatalog::storeRemotePixmap(imageUrl, bytes);
                 art->setSource(pm);
                 if (onCoverFetched)
                     onCoverFetched(imageUrl, pm);
@@ -559,7 +608,12 @@ public:
         auto *row = new QHBoxLayout();
         row->addStretch(1);
         auto *close = new QPushButton(QObject::tr("Fechar"), this);
-        auto *install = new QPushButton(QObject::tr("Instalar"), this);
+        auto *install = new QPushButton(presence == HomeCatalog::Presence::Update
+                                           ? QObject::tr("Atualizar")
+                                           : (presence == HomeCatalog::Presence::Installed
+                                                  ? QObject::tr("Reinstalar")
+                                                  : QObject::tr("Instalar")),
+                                       this);
         install->setProperty("cssClass", "primary");
         install->setMinimumHeight(38);
         close->setMinimumHeight(38);
@@ -660,13 +714,25 @@ void HomePage::buildUi()
 void HomePage::reload()
 {
     m_catalog = HomeCatalog::load();
+    m_installs = HomeCatalog::scanInstalled(m_settings.plutoniumInstance);
     if (!m_catalog.ok) {
         m_status->setText(tr("Catalogo indisponivel — %1").arg(m_catalog.error));
+        m_status->show();
+    } else if (m_catalog.fromCache) {
+        m_status->setText(m_catalog.error.isEmpty()
+                              ? tr("Showing the last downloaded catalog.")
+                              : m_catalog.error);
         m_status->show();
     } else {
         m_status->hide();
     }
     rebuildFilters();
+    rebuildContent();
+}
+
+void HomePage::refreshInstallState()
+{
+    m_installs = HomeCatalog::scanInstalled(m_settings.plutoniumInstance);
     rebuildContent();
 }
 
@@ -760,6 +826,7 @@ void HomePage::rebuildContent()
                 requestRemote(m->image, m->id);
             if (s.logo.isNull() && g && HomeCatalog::isRemote(g->logo))
                 requestRemote(g->logo, QString());
+            s.presence = HomeCatalog::presenceOf(*m, m_installs);
             slides << s;
         }
     }
@@ -862,7 +929,8 @@ void HomePage::rebuildContent()
         grid->setProperty("isCardGrid", true);
         for (const HomeCatalog::Mod &m : def.mods) {
             const HomeCatalog::Game *g = HomeCatalog::findGame(m_catalog, m.game);
-            auto *card = new ModCard(m, g ? g->name : m.game, section);
+            auto *card = new ModCard(m, g ? g->name : m.game,
+                                    HomeCatalog::presenceOf(m, m_installs), section);
             card->onClick = [this](const QString &id) { openDetails(id); };
             const QPixmap cover = resolvedCover(m.image);
             if (!cover.isNull())
@@ -918,7 +986,8 @@ void HomePage::openDetails(const QString &modId)
     emit detailsRequested(modId);
     const HomeCatalog::Game *g = HomeCatalog::findGame(m_catalog, m->game);
     const QPixmap cover = resolvedCover(m->image);
-    ModDetailsDialog dlg(*m, g ? g->name : m->game, cover, m_net,
+    ModDetailsDialog dlg(*m, g ? g->name : m->game,
+                         HomeCatalog::presenceOf(*m, m_installs), cover, m_net,
                          [this, modId](const QString &url, const QPixmap &pm) {
         m_remote.insert(url, pm);
         applyRemoteCover(modId, pm);
@@ -935,6 +1004,8 @@ QPixmap HomePage::resolvedCover(const QString &ref) const
     QPixmap pm = HomeCatalog::pixmap(ref);
     if (pm.isNull() && HomeCatalog::isRemote(ref))
         pm = m_remote.value(ref);
+    if (pm.isNull() && HomeCatalog::isRemote(ref))
+        pm = HomeCatalog::cachedRemotePixmap(ref);
     return pm;
 }
 
@@ -993,11 +1064,13 @@ void HomePage::requestRemote(const QString &url, const QString &modId)
             m_remote.remove(url);
             return;
         }
+        const QByteArray bytes = reply->readAll();
         QPixmap pm;
-        if (!pm.loadFromData(reply->readAll())) {
+        if (!pm.loadFromData(bytes)) {
             m_remote.remove(url);
             return;
         }
+        HomeCatalog::storeRemotePixmap(url, bytes);
         m_remote.insert(url, pm);
         applyRemoteCover(modId, pm);
         applyRemoteUrl(url, pm);

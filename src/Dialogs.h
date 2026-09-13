@@ -16,6 +16,8 @@ namespace Dialogs
         T5,
         T6,
         IW5,
+        S1,
+        T7,
         Plutonium,
         WrongGame,
         WrongGameServer,
@@ -49,7 +51,6 @@ namespace Dialogs
     bool confirmDownloadT5Settings(QWidget *parent);
     bool confirmDownloadT4Settings(QWidget *parent);
 
-    // Generic “update available” prompt (unused until updates ship).
     bool confirmUpdate(QWidget *parent, const QString &newVersion);
 
     // Free-form error (ArchiveTool/Downloader already format the text).

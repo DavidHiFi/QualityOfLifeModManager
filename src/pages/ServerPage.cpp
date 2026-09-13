@@ -112,7 +112,7 @@ ServerPage::ServerPage(AppSettings &settings, QWidget *parent)
 
     auto *contextRow = new QHBoxLayout();
     contextRow->setSpacing(8);
-    m_gameCombo = new QComboBox(this);
+    m_gameCombo = new Ui::ComboBox(this);
     m_gameCombo->addItems({"World at War", "Black ops", "Black ops II"});
     m_gameCombo->setCurrentText("Black ops II");
     m_gameCombo->setMinimumWidth(210);
@@ -179,7 +179,7 @@ ServerPage::ServerPage(AppSettings &settings, QWidget *parent)
     ipLabel->setObjectName("srvIpLabel");
     ipLabel->setObjectName("FieldLabel");
     optsLayout->addWidget(ipLabel);
-    m_ipCombo = new QComboBox(optsCard);
+    m_ipCombo = new Ui::ComboBox(optsCard);
     optsLayout->addWidget(m_ipCombo);
     auto *refreshIpBtn = new QPushButton(tr("Atualizar IPs"), optsCard);
     refreshIpBtn->setObjectName("srvRefreshIp");

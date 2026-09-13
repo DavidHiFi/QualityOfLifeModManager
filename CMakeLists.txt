@@ -1,5 +1,6 @@
 cmake_minimum_required(VERSION 3.16)
-project(LanLauncherQt VERSION 1.0.0 LANGUAGES CXX)
+project(LanLauncherQt LANGUAGES CXX)
+# App version lives in src/Version.h (CLL_VERSION).
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -32,11 +33,16 @@ set(SOURCES
     src/ProgressDialog.cpp
     src/SmartModInstaller.cpp
     src/CllInstaller.cpp
+    src/GithubModInstaller.cpp
+    src/ModPreview.cpp
     src/GameCatalog.cpp
     src/AnimatedLogo.cpp
     src/pages/PlayPage.cpp
     src/pages/SettingsPage.cpp
     src/pages/AboutPage.cpp
+    src/HomeCatalog.cpp
+    src/pages/HomePage.cpp
+    src/UpdateService.cpp
 )
 
 set(HEADERS
@@ -59,11 +65,16 @@ set(HEADERS
     src/ProgressDialog.h
     src/SmartModInstaller.h
     src/CllInstaller.h
+    src/GithubModInstaller.h
+    src/ModPreview.h
     src/GameCatalog.h
     src/AnimatedLogo.h
     src/pages/PlayPage.h
     src/pages/SettingsPage.h
     src/pages/AboutPage.h
+    src/HomeCatalog.h
+    src/pages/HomePage.h
+    src/UpdateService.h
 )
 
 qt_add_resources(QRC_SOURCES resources/resources.qrc)
@@ -85,14 +96,20 @@ if (TARGET Qt${QT_VERSION_MAJOR}::Svg)
     target_link_libraries(LanLauncherQt PRIVATE Qt${QT_VERSION_MAJOR}::Svg)
 endif()
 
+set_target_properties(LanLauncherQt PROPERTIES OUTPUT_NAME "CodLanLaucher")
+
 if (WIN32)
     set_target_properties(LanLauncherQt PROPERTIES WIN32_EXECUTABLE TRUE)
     set(APP_ICON "${CMAKE_CURRENT_SOURCE_DIR}/resources/icons/icon.ico")
-    configure_file(
-        "${CMAKE_CURRENT_SOURCE_DIR}/resources/app.rc.in"
-        "${CMAKE_CURRENT_BINARY_DIR}/app.rc"
-        @ONLY)
-    target_sources(LanLauncherQt PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/app.rc")
+    if (EXISTS "${APP_ICON}")
+        configure_file(
+            "${CMAKE_CURRENT_SOURCE_DIR}/resources/app.rc.in"
+            "${CMAKE_CURRENT_BINARY_DIR}/app.rc"
+            @ONLY)
+        target_sources(LanLauncherQt PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/app.rc")
+    else()
+        message(WARNING "resources/icons/icon.ico not found — exe will have the default icon")
+    endif()
 endif()
 
 if (MINGW)

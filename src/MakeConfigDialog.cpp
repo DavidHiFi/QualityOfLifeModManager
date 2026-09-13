@@ -1,3 +1,4 @@
+#include "Checkables.h"
 #include "MakeConfigDialog.h"
 #include "AppSettings.h"
 #include "ConfigMaker.h"
@@ -76,7 +77,7 @@ MakeConfigDialog::MakeConfigDialog(AppSettings &settings, const QString &serverI
 void MakeConfigDialog::buildWawMpMaps(QVBoxLayout *into)
 {
     into->addWidget(new QLabel(tr("Modo"), this));
-    m_gameTypeCombo = new QComboBox(this);
+    m_gameTypeCombo = new Ui::ComboBox(this);
     struct Mode { QString code; QString label; };
     const QList<Mode> modes = {
         {"tdm", tr("Team Deathmatch")}, {"dm", tr("Free For All")},
@@ -118,7 +119,7 @@ void MakeConfigDialog::buildWawMpMaps(QVBoxLayout *into)
 void MakeConfigDialog::buildBo1MpMaps(QVBoxLayout *into)
 {
     into->addWidget(new QLabel(tr("Modo"), this));
-    m_gameTypeCombo = new QComboBox(this);
+    m_gameTypeCombo = new Ui::ComboBox(this);
     struct Mode { QString code; QString label; bool wager; };
     const QList<Mode> modes = {
         {"tdm",  tr("Team Deathmatch"), false},
@@ -170,7 +171,7 @@ void MakeConfigDialog::buildBo1MpMaps(QVBoxLayout *into)
 void MakeConfigDialog::buildBo2MpMaps(QVBoxLayout *into)
 {
     into->addWidget(new QLabel(tr("Modo"), this));
-    m_gameTypeCombo = new QComboBox(this);
+    m_gameTypeCombo = new Ui::ComboBox(this);
     struct Mode { QString code; QString label; };
     const QList<Mode> modes = {
         {"tdm", tr("Team Deathmatch")}, {"dm", tr("Free For All")},

@@ -26,6 +26,9 @@ public:
     void selectGame(const QString &gameId);
     void installFromCatalog(const QString &modId);
 
+signals:
+    void catalogChanged();
+
 private slots:
     void onGameSelected(const QString &gameName);
     void onRefreshOrDeselect(bool clearSelection);

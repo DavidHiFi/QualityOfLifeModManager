@@ -25,6 +25,10 @@ QString messageFor(Dialogs::Msg kind, const AppSettings &s)
         return QObject::tr("A pasta informada \"%1\"\nnao contem dados validos de Black Ops II.").arg(s.bo2);
     case Dialogs::Msg::IW5:
         return QObject::tr("A pasta informada \"%1\"\nnao contem dados validos de Modern Warfare 3.").arg(s.mw3);
+    case Dialogs::Msg::S1:
+        return QObject::tr("A pasta informada \"%1\"\nnao contem s1.exe (Advanced Warfare).").arg(s.aw);
+    case Dialogs::Msg::T7:
+        return QObject::tr("A pasta informada \"%1\"\nnao contem o executavel do Black Ops III.").arg(s.bo3);
     case Dialogs::Msg::Plutonium:
         return QObject::tr("A pasta informada \"%1\"\nnao contem uma instalacao valida do Plutonium.").arg(s.plutoniumInstance);
     case Dialogs::Msg::WrongGame:

@@ -104,6 +104,19 @@ bool isValidMw3(const QString &dir)
 {
     return QFileInfo::exists(dir + "/main/iw_00.iwd");
 }
+bool isValidAw(const QString &dir)
+{
+    return QFileInfo::exists(dir + "/s1.exe")
+           || QFileInfo::exists(dir + "/s1_mp64_ship.exe")
+           || QFileInfo::exists(dir + "/s1_sp64_ship.exe");
+}
+bool isValidBo3(const QString &dir)
+{
+    return QFileInfo::exists(dir + "/BlackOps3.exe")
+           || QFileInfo::exists(dir + "/boiii.exe")
+           || QFileInfo::exists(dir + "/t7.exe")
+           || QFileInfo::exists(dir + "/bo3.exe");
+}
 
 QString steamInstallPath()
 {
@@ -159,6 +172,8 @@ QList<GameHit> detectInstalledGames()
         {"Black ops", {"Call of Duty Black Ops", "Call of Duty - Black Ops", "Black Ops"}, &isValidBo1},
         {"Black ops II", {"Call of Duty Black Ops II", "Call of Duty - Black Ops II", "Black Ops II", "pluto_t6_full_game"}, &isValidBo2},
         {"Modern Warfare 3", {"Call of Duty Modern Warfare 3", "Call of Duty - Modern Warfare 3", "Modern Warfare 3"}, &isValidMw3},
+        {"Advanced Warfare", {"Call of Duty Advanced Warfare", "Call of Duty - Advanced Warfare", "Advanced Warfare"}, &isValidAw},
+        {"Black ops III", {"Call of Duty Black Ops III", "Call of Duty - Black Ops III", "Black Ops III", "Black Ops 3"}, &isValidBo3},
     };
 
     auto tryPath = [&](const QString &path, const Spec &spec) {

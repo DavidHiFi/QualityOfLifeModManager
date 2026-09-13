@@ -7,6 +7,7 @@
 #include "SteamDetector.h"
 #include "Theme.h"
 #include "I18n.h"
+#include "UpdateService.h"
 #include "Checkables.h"
 
 #include <QCheckBox>
@@ -26,6 +27,7 @@
 #include <QProgressBar>
 #include <QPushButton>
 #include <QRadioButton>
+#include <QScrollArea>
 #include <QStandardPaths>
 #include <QStackedWidget>
 #include <QTimer>
@@ -69,7 +71,7 @@ void SetupWizard::buildUi()
     m_headerTitle->setObjectName("WizardTitle");
     m_headerSub = new QLabel(tr("setup inicial"), header);
     m_headerSub->setObjectName("WizardSub");
-    m_stepLabel = new QLabel(tr("Passo 1 de 4"), header);
+    m_stepLabel = new QLabel(tr("Passo 1 de 5"), header);
     m_stepLabel->setObjectName("WizardSub");
     col->addWidget(m_headerTitle);
     col->addWidget(m_headerSub);
@@ -82,7 +84,7 @@ void SetupWizard::buildUi()
     auto *dotsLay = new QHBoxLayout(m_dots);
     dotsLay->setContentsMargins(0, 0, 0, 0);
     dotsLay->setSpacing(8);
-    for (int i = 0; i < 4; ++i) {
+    for (int i = 0; i < 5; ++i) {
         auto *d = new QLabel(m_dots);
         d->setFixedSize(10, 10);
         d->setObjectName("StepDot");
@@ -94,9 +96,14 @@ void SetupWizard::buildUi()
 
     m_stack = new QStackedWidget(this);
     m_stack->addWidget(buildWelcomePage());
+    m_stack->addWidget(buildPlutoniumPage());
     m_stack->addWidget(buildNickPage());
     m_stack->addWidget(buildGamesPage());
     m_stack->addWidget(buildDonePage());
+    connect(&ThemeHub::instance(), &ThemeHub::themeChanged, this, [this]() {
+        setStepDots(m_stack ? m_stack->currentIndex() : 0);
+        refreshInstalledDetect();
+    });
     root->addWidget(m_stack, 1);
 
     auto *footer = new QWidget(this);
@@ -122,8 +129,10 @@ void SetupWizard::buildUi()
 
 void SetupWizard::setStepDots(int index)
 {
-    const QString on = QStringLiteral("background:%1; border-radius:5px;").arg(Theme::accent());
-    const QString off = QStringLiteral("background:#2e3149; border-radius:5px;");
+    const int rad = Theme::radius() ? 5 : 0;
+    const QString on = QStringLiteral("background:%1; border-radius:%2px;").arg(Theme::accent()).arg(rad);
+    const QString off = QStringLiteral("background:%1; border-radius:%2px;")
+                            .arg(Theme::token(QStringLiteral("SCROLL"))).arg(rad);
     for (int i = 0; i < m_dotLabels.size(); ++i) {
         m_dotLabels[i]->setProperty("active", i <= index);
         m_dotLabels[i]->setStyleSheet(i <= index ? on : off);
@@ -144,7 +153,7 @@ QWidget *SetupWizard::buildWelcomePage()
     m_langHint->setObjectName("WizardCardDesc");
     m_langHint->setWordWrap(true);
     lay->addWidget(m_langHint);
-    m_langCombo = new QComboBox(page);
+    m_langCombo = new Ui::ComboBox(page);
     m_langCombo->setMinimumHeight(36);
     for (const QString &code : I18n::codes())
         m_langCombo->addItem(I18n::displayName(code), code);
@@ -153,7 +162,39 @@ QWidget *SetupWizard::buildWelcomePage()
     lay->addWidget(m_langCombo);
     connect(m_langCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
             this, &SetupWizard::onLanguageChanged);
-    lay->addSpacing(8);
+    lay->addSpacing(12);
+
+    m_themeLabel = new QLabel(tr("Tema"), page);
+    m_themeLabel->setObjectName("WizardLead");
+    lay->addWidget(m_themeLabel);
+    m_themeHint = new QLabel(tr("Escolha o visual do launcher. Vale para o setup e para o programa."), page);
+    m_themeHint->setObjectName("WizardCardDesc");
+    m_themeHint->setWordWrap(true);
+    lay->addWidget(m_themeHint);
+    m_themeCombo = new Ui::ComboBox(page);
+    m_themeCombo->setMinimumHeight(36);
+    for (const QString &key : Theme::names())
+        m_themeCombo->addItem(Theme::displayName(key), key);
+    const int thi = m_themeCombo->findData(Theme::normalizeKey(m_settings.theme));
+    m_themeCombo->setCurrentIndex(thi >= 0 ? thi : 0);
+    lay->addWidget(m_themeCombo);
+    connect(m_themeCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this](int) {
+        const QString key = m_themeCombo->currentData().toString();
+        if (key.isEmpty())
+            return;
+        m_settings.theme = key;
+        Theme::apply(key);
+    });
+    lay->addStretch();
+    return page;
+}
+
+QWidget *SetupWizard::buildPlutoniumPage()
+{
+    auto *page = new QWidget(this);
+    auto *lay = new QVBoxLayout(page);
+    lay->setContentsMargins(40, 20, 40, 16);
+    lay->setSpacing(10);
 
     m_welcomeLead = new QLabel(tr("Client Plutonium"), page);
     m_welcomeLead->setObjectName("WizardLead");
@@ -214,7 +255,7 @@ QWidget *SetupWizard::buildWelcomePage()
     connect(m_installedPath, &QLineEdit::textChanged, this, [this]() { refreshInstalledDetect(); });
     connect(m_radioPortable, &QRadioButton::toggled, this, [this](bool on) {
         if (on) {
-            m_kitStatus->setText(tr("Ao continuar, o kit sera baixado para ./pu."));
+            m_kitStatus->setText(tr("O download so comeca se voce escolher o kit portatil."));
             m_kitProgress->setVisible(false);
         }
         updateNavButtons();
@@ -249,6 +290,9 @@ void SetupWizard::refreshInstalledDetect()
     m_installedStatus->setText(
         (ok ? tr("Instalacao valida. ") : tr("Nao e uma pasta Plutonium valida. "))
         + AppSettings::plutoniumRootSummary(path));
+    m_installedStatus->setStyleSheet(ok
+        ? QStringLiteral("color:%1;").arg(Theme::token(QStringLiteral("OK")))
+        : QStringLiteral("color:%1;").arg(Theme::token(QStringLiteral("DANGER_TEXT"))));
     if (!m_radioPortable->isChecked() && !m_radioInstalled->isChecked()) {
         if (ok)
             m_radioInstalled->setChecked(true);
@@ -341,6 +385,7 @@ void SetupWizard::startKitInstall()
                        ? QObject::tr("Falha ao extrair pu.dat")
                        : extractErr;
         }
+        UpdateService::stampFile(QStringLiteral("pu"), QString(), datPath);
         QFile::remove(datPath);
 
         if (!QFileInfo::exists(AppSettings::localPuBootstrapper())) {
@@ -366,7 +411,7 @@ void SetupWizard::onKitFinished()
         m_settings.plutoniumInstance = AppSettings::localPuDir();
         m_kitProgress->setValue(100);
         m_kitStatus->setText(tr("Kit instalado em %1").arg(AppSettings::localPuDir()));
-        m_stack->setCurrentIndex(1);
+        m_stack->setCurrentIndex(2);
         updateNavButtons();
         return;
     } else {
@@ -413,8 +458,12 @@ QWidget *SetupWizard::buildGamesPage()
     connect(m_rescanBtn, &QPushButton::clicked, this, &SetupWizard::onRescan);
     lay->addWidget(m_rescanBtn, 0, Qt::AlignLeft);
 
+    auto *list = new QWidget(page);
+    auto *listLay = new QVBoxLayout(list);
+    listLay->setContentsMargins(0, 8, 8, 0);
+    listLay->setSpacing(8);
     for (const auto &g : GameCatalog::all()) {
-        auto *row = new QFrame(page);
+        auto *row = new QFrame(list);
         row->setObjectName("WizardCard");
         auto *rl = new QVBoxLayout(row);
         auto *top = new QHBoxLayout();
@@ -426,13 +475,22 @@ QWidget *SetupWizard::buildGamesPage()
         rl->addLayout(top);
         auto *edit = new QLineEdit(row);
         edit->setPlaceholderText(tr("Pasta de instalacao"));
+        edit->setEnabled(false);
         rl->addWidget(edit);
-        lay->addWidget(row);
+        listLay->addWidget(row);
         m_gameRows.push_back({g.id, edit, cb});
         connect(browse, &QPushButton::clicked, this, [this, id = g.id]() { onBrowseGame(id); });
         connect(cb, &QCheckBox::toggled, edit, &QLineEdit::setEnabled);
+        cb->setChecked(false);
     }
-    lay->addStretch();
+    listLay->addStretch();
+
+    auto *scroll = new QScrollArea(page);
+    scroll->setWidget(list);
+    scroll->setWidgetResizable(true);
+    scroll->setFrameShape(QFrame::NoFrame);
+    scroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    lay->addWidget(scroll, 1);
     return page;
 }
 
@@ -462,7 +520,7 @@ void SetupWizard::updateNavButtons()
     const int n = m_stack->count();
     m_backBtn->setEnabled(i > 0);
     m_skipBtn->setVisible(i < n - 1);
-    if (i == 0 && m_kitBusy) {
+    if (i == 1 && m_kitBusy) {
         m_nextBtn->setEnabled(false);
         m_nextBtn->setText(tr("Aguarde..."));
         m_skipBtn->setEnabled(false);
@@ -471,22 +529,22 @@ void SetupWizard::updateNavButtons()
         m_skipBtn->setEnabled(true);
         if (i == n - 1)
             m_nextBtn->setText(tr("Concluir"));
-        else if (i == 0 && usingPortableKit() && !m_kitOk)
+        else if (i == 1 && usingPortableKit() && !m_kitOk)
             m_nextBtn->setText(tr("Baixar Plutonium Portable"));
         else
             m_nextBtn->setText(tr("Continuar"));
     }
-    const int step = qBound(1, i + 1, 4);
-    m_stepLabel->setText(tr("Passo %1 de 4").arg(step));
+    const int step = qBound(1, i + 1, 5);
+    m_stepLabel->setText(tr("Passo %1 de 5").arg(step));
     setStepDots(i);
 }
 
 void SetupWizard::onNext()
 {
     const int i = m_stack->currentIndex();
-    if (i == 0 && m_kitBusy)
+    if (i == 1 && m_kitBusy)
         return;
-    if (i == 0) {
+    if (i == 1) {
         if (usingPortableKit()) {
             if (!m_kitOk) {
                 startKitInstall();
@@ -504,9 +562,9 @@ void SetupWizard::onNext()
             }
             m_settings.plutoniumInstance = AppSettings::resolvePath(path);
         }
-    } else if (i == 1)
+    } else if (i == 2)
         m_settings.username = m_nickEdit->text().trimmed();
-    else if (i == 2)
+    else if (i == 3)
         applyDetectedGames();
     if (i >= m_stack->count() - 1) {
         finish(true);
@@ -603,6 +661,8 @@ void SetupWizard::applyDetectedGames()
         else if (row.id == "Black ops") m_settings.bo1 = path;
         else if (row.id == "Black ops II") m_settings.bo2 = path;
         else if (row.id == "Modern Warfare 3") m_settings.mw3 = path;
+        else if (row.id == "Advanced Warfare") m_settings.aw = path;
+        else if (row.id == "Black ops III") m_settings.bo3 = path;
     }
 }
 
@@ -629,6 +689,20 @@ void SetupWizard::retranslate()
         m_langLabel->setText(tr("Idioma"));
     if (m_langHint)
         m_langHint->setText(tr("Escolha o idioma do programa."));
+    if (m_themeLabel)
+        m_themeLabel->setText(tr("Tema"));
+    if (m_themeHint)
+        m_themeHint->setText(tr("Escolha o visual do launcher. Vale para o setup e para o programa."));
+    if (m_themeCombo) {
+        const QString cur = m_themeCombo->currentData().toString();
+        m_themeCombo->blockSignals(true);
+        m_themeCombo->clear();
+        for (const QString &key : Theme::names())
+            m_themeCombo->addItem(Theme::displayName(key), key);
+        const int i = m_themeCombo->findData(cur);
+        m_themeCombo->setCurrentIndex(i >= 0 ? i : 0);
+        m_themeCombo->blockSignals(false);
+    }
     if (m_welcomeLead)
         m_welcomeLead->setText(tr("Client Plutonium"));
     if (m_welcomeDesc)
@@ -641,12 +715,8 @@ void SetupWizard::retranslate()
         m_browseInstalled->setText(tr("Procurar"));
     if (m_installedPath)
         m_installedPath->setPlaceholderText(tr("%LOCALAPPDATA%\\Plutonium"));
-    if (m_kitStatus) {
-        if (usingPortableKit())
-            m_kitStatus->setText(tr("Ao continuar, o kit sera baixado para ./pu."));
-        else
-            m_kitStatus->setText(tr("O download so comeca se voce escolher o kit portatil."));
-    }
+    if (m_kitStatus && !m_kitBusy && !m_kitOk)
+        m_kitStatus->setText(tr("O download so comeca se voce escolher o kit portatil."));
     refreshInstalledDetect();
     if (m_nickLead)
         m_nickLead->setText(tr("Defina seu Nickname"));

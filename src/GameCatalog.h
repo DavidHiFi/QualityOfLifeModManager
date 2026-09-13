@@ -17,6 +17,7 @@ namespace GameCatalog
     };
 
     QList<Game> all();
+    QList<Game> ordered(const QStringList &codes);
     Game byCode(const QString &code);
     Game byId(const QString &id);
 

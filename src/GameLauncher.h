@@ -20,4 +20,7 @@ namespace GameLauncher
                          const QString &configSelection, const QString &port);
     bool terminatePid(qint64 pid);
     bool isPidRunning(qint64 pid);
+    void startErrorDialogWatch(qint64 pid);
+    qint64 findProcessInFolder(const QString &folder);
+    void terminateFolderProcesses(const QString &folder);
 }

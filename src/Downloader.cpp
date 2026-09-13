@@ -1,4 +1,5 @@
 #include "Downloader.h"
+#include "Version.h"
 
 #include <QEventLoop>
 #include <QFile>
@@ -27,7 +28,7 @@ bool downloadToFile(const QString &url, const QString &destPath, QString &error,
     QNetworkAccessManager manager;
     QNetworkRequest request{QUrl(url)};
     request.setAttribute(QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::NoLessSafeRedirectPolicy);
-    request.setHeader(QNetworkRequest::UserAgentHeader, QStringLiteral("CodLanLaucher/1.1.0"));
+    request.setHeader(QNetworkRequest::UserAgentHeader, QLatin1String(CLL_USER_AGENT));
 
     QNetworkReply *reply = manager.get(request);
 
@@ -69,7 +70,7 @@ QByteArray downloadBytes(const QString &url, QString &error, int timeoutMs)
     QNetworkAccessManager manager;
     QNetworkRequest request{QUrl(url)};
     request.setAttribute(QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::NoLessSafeRedirectPolicy);
-    request.setHeader(QNetworkRequest::UserAgentHeader, QStringLiteral("CodLanLaucher/1.1.0"));
+    request.setHeader(QNetworkRequest::UserAgentHeader, QLatin1String(CLL_USER_AGENT));
     QNetworkReply *reply = manager.get(request);
 
     QEventLoop loop;

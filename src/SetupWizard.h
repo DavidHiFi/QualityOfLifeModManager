@@ -33,6 +33,7 @@ private slots:
 private:
     void buildUi();
     QWidget *buildWelcomePage();
+    QWidget *buildPlutoniumPage();
     QWidget *buildNickPage();
     QWidget *buildGamesPage();
     QWidget *buildDonePage();
@@ -55,7 +56,10 @@ private:
     QLabel *m_headerSub = nullptr;
     QLabel *m_stepLabel = nullptr;
     QComboBox *m_langCombo = nullptr;
+    QComboBox *m_themeCombo = nullptr;
     QLabel *m_langLabel = nullptr;
+    QLabel *m_themeLabel = nullptr;
+    QLabel *m_themeHint = nullptr;
     QLabel *m_welcomeLead = nullptr;
     QLabel *m_welcomeDesc = nullptr;
     QLabel *m_langHint = nullptr;

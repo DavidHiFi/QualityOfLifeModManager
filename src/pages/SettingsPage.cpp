@@ -3,6 +3,7 @@
 #include "I18n.h"
 #include "ImportKitDialog.h"
 #include "../Checkables.h"
+#include "../Theme.h"
 
 #include <QCheckBox>
 #include <QComboBox>
@@ -75,7 +76,7 @@ SettingsPage::SettingsPage(AppSettings &settings, QWidget *parent)
     auto *langCard = makeCard(inner, tr("IDIOMA"), tr("Idioma do programa"),
                               tr("Vale para o setup e para o launcher. Alguns textos ja abertos atualizam ao reabrir."),
                               &langBody);
-    m_langCombo = new QComboBox(langCard);
+    m_langCombo = new Ui::ComboBox(langCard);
     m_langCombo->setMinimumHeight(36);
     for (const QString &code : I18n::codes())
         m_langCombo->addItem(I18n::displayName(code), code);
@@ -88,10 +89,30 @@ SettingsPage::SettingsPage(AppSettings &settings, QWidget *parent)
             return;
         m_settings.language = code;
         I18n::apply(code);
-        m_settings.saveToIni();
     });
     langCard->setObjectName("cardLang");
     root->addWidget(langCard);
+
+    QVBoxLayout *themeBody = nullptr;
+    auto *themeCard = makeCard(inner, tr("TEMA"), tr("Aparência do launcher"),
+                               tr("Troca o visual na hora. Classic Things usa cantos retos."),
+                               &themeBody);
+    m_themeCombo = new Ui::ComboBox(themeCard);
+    m_themeCombo->setMinimumHeight(36);
+    for (const QString &key : Theme::names())
+        m_themeCombo->addItem(Theme::displayName(key), key);
+    const int thi = m_themeCombo->findData(Theme::normalizeKey(m_settings.theme));
+    m_themeCombo->setCurrentIndex(thi >= 0 ? thi : 0);
+    themeBody->addWidget(m_themeCombo);
+    connect(m_themeCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this](int) {
+        const QString key = m_themeCombo->currentData().toString();
+        if (key.isEmpty())
+            return;
+        m_settings.theme = key;
+        Theme::apply(key);
+    });
+    themeCard->setObjectName("cardTheme");
+    root->addWidget(themeCard);
 
     QVBoxLayout *homeBody = nullptr;
     auto *homeCard = makeCard(inner, tr("INÍCIO"), tr("Página inicial"),
@@ -102,11 +123,27 @@ SettingsPage::SettingsPage(AppSettings &settings, QWidget *parent)
     homeBody->addWidget(m_homeEnabled);
     connect(m_homeEnabled, &QCheckBox::toggled, this, [this](bool on) {
         m_settings.homeEnabled = on;
-        m_settings.saveToIni();
         emit homeEnabledChanged(on);
     });
     homeCard->setObjectName("cardHome");
     root->addWidget(homeCard);
+
+    QVBoxLayout *updBody = nullptr;
+    auto *updCard = makeCard(inner, tr("ATUALIZAÇÕES"), tr("Verificar atualizações"),
+                             tr("O launcher consulta cll_update.json ao iniciar."),
+                             &updBody);
+    m_checkUpdates = new QCheckBox(tr("Avisar sobre atualizações ao iniciar"), updCard);
+    m_checkUpdates->setChecked(m_settings.checkUpdatesOnStart);
+    m_checkUpdatesBtn = new QPushButton(tr("Verificar atualizações"), updCard);
+    m_checkUpdatesBtn->setCursor(Qt::PointingHandCursor);
+    updBody->addWidget(m_checkUpdates);
+    updBody->addWidget(m_checkUpdatesBtn);
+    connect(m_checkUpdates, &QCheckBox::toggled, this, [this](bool on) {
+        m_settings.checkUpdatesOnStart = on;
+    });
+    connect(m_checkUpdatesBtn, &QPushButton::clicked, this, &SettingsPage::checkUpdatesRequested);
+    updCard->setObjectName("cardUpdates");
+    root->addWidget(updCard);
 
     // ---- 2. Plutonium client (folder + portable kit on the same card) ----
     QVBoxLayout *puBody = nullptr;
@@ -178,9 +215,27 @@ SettingsPage::SettingsPage(AppSettings &settings, QWidget *parent)
     folderRow(gamesBody, tr("T5 · Black Ops"), &AppSettings::bo1);
     folderRow(gamesBody, tr("T6 · Black Ops II"), &AppSettings::bo2);
     folderRow(gamesBody, tr("IW5 · Modern Warfare 3"), &AppSettings::mw3);
+    folderRow(gamesBody, tr("S1 · Advanced Warfare"), &AppSettings::aw);
+    folderRow(gamesBody, tr("T7 · Black Ops III"), &AppSettings::bo3);
     games->setObjectName("cardGames");
     root->addWidget(games);
     root->addStretch();
+
+    auto *actions = new QHBoxLayout();
+    actions->addStretch();
+    m_cancelBtn = new QPushButton(tr("Cancelar"), inner);
+    m_saveBtn = new QPushButton(tr("Salvar"), inner);
+    m_saveBtn->setProperty("cssClass", "primary");
+    m_cancelBtn->setCursor(Qt::PointingHandCursor);
+    m_saveBtn->setCursor(Qt::PointingHandCursor);
+    m_cancelBtn->setMinimumHeight(40);
+    m_saveBtn->setMinimumHeight(40);
+    m_saveBtn->setMinimumWidth(120);
+    actions->addWidget(m_cancelBtn);
+    actions->addWidget(m_saveBtn);
+    root->addLayout(actions);
+    connect(m_saveBtn, &QPushButton::clicked, this, &SettingsPage::saveEdit);
+    connect(m_cancelBtn, &QPushButton::clicked, this, &SettingsPage::cancelEdit);
 
     scroll->setWidget(inner);
     auto *outer = new QVBoxLayout(this);
@@ -250,12 +305,46 @@ void SettingsPage::pullFromSettings()
         if (i >= 0)
             m_langCombo->setCurrentIndex(i);
     }
+    if (m_themeCombo) {
+        const int i = m_themeCombo->findData(Theme::normalizeKey(m_settings.theme));
+        m_themeCombo->blockSignals(true);
+        m_themeCombo->setCurrentIndex(i >= 0 ? i : 0);
+        m_themeCombo->blockSignals(false);
+    }
     if (m_homeEnabled) {
         m_homeEnabled->blockSignals(true);
         m_homeEnabled->setChecked(m_settings.homeEnabled);
         m_homeEnabled->blockSignals(false);
     }
+    if (m_checkUpdates) {
+        m_checkUpdates->blockSignals(true);
+        m_checkUpdates->setChecked(m_settings.checkUpdatesOnStart);
+        m_checkUpdates->blockSignals(false);
+    }
     updateKitButton();
+}
+
+void SettingsPage::beginEdit()
+{
+    m_snapshot = m_settings;
+    pullFromSettings();
+}
+
+void SettingsPage::saveEdit()
+{
+    m_settings.saveToIni();
+    m_snapshot = m_settings;
+}
+
+void SettingsPage::cancelEdit()
+{
+    m_settings = m_snapshot;
+    I18n::apply(m_settings.language);
+    Theme::apply(m_settings.theme);
+    pullFromSettings();
+    emit homeEnabledChanged(m_settings.homeEnabled);
+    emit plutoniumFolderChanged();
+    emit cancelled();
 }
 
 void SettingsPage::retranslate()
@@ -271,10 +360,22 @@ void SettingsPage::retranslate()
     fill(findChild<QFrame*>("cardProfile"), tr("PERFIL"), tr("Seu nickname"), QString());
     fill(findChild<QFrame*>("cardLang"), tr("IDIOMA"), tr("Idioma do programa"),
          tr("Vale para o setup e para o launcher."));
+    fill(findChild<QFrame*>("cardTheme"), tr("TEMA"), tr("Aparência do launcher"),
+         tr("Troca o visual na hora. Classic Things usa cantos retos."));
     fill(findChild<QFrame*>("cardHome"), tr("INÍCIO"), tr("Página inicial"),
          tr("Desative para esconder o catálogo da barra lateral."));
     if (m_homeEnabled)
         m_homeEnabled->setText(tr("Mostrar a aba Início"));
+    fill(findChild<QFrame*>("cardUpdates"), tr("ATUALIZAÇÕES"), tr("Verificar atualizações"),
+         tr("O launcher consulta cll_update.json ao iniciar."));
+    if (m_checkUpdates)
+        m_checkUpdates->setText(tr("Avisar sobre atualizações ao iniciar"));
+    if (m_checkUpdatesBtn)
+        m_checkUpdatesBtn->setText(tr("Verificar atualizações"));
+    if (m_saveBtn)
+        m_saveBtn->setText(tr("Salvar"));
+    if (m_cancelBtn)
+        m_cancelBtn->setText(tr("Cancelar"));
     fill(findChild<QFrame*>("cardPu"), tr("CLIENT"), tr("Plutonium"),
          tr("Use o kit portatil em ./pu ou a instalacao oficial em AppData."));
     fill(findChild<QFrame*>("cardGames"), tr("JOGOS"), tr("Pastas de instalacao"),
@@ -297,5 +398,15 @@ void SettingsPage::retranslate()
         const int i = m_langCombo->findData(cur);
         m_langCombo->setCurrentIndex(i >= 0 ? i : 0);
         m_langCombo->blockSignals(false);
+    }
+    if (m_themeCombo) {
+        const QString cur = m_themeCombo->currentData().toString();
+        m_themeCombo->blockSignals(true);
+        m_themeCombo->clear();
+        for (const QString &key : Theme::names())
+            m_themeCombo->addItem(Theme::displayName(key), key);
+        const int i = m_themeCombo->findData(cur);
+        m_themeCombo->setCurrentIndex(i >= 0 ? i : 0);
+        m_themeCombo->blockSignals(false);
     }
 }

@@ -18,9 +18,10 @@ public:
     QString currentGameId() const { return m_gameId; }
     void setRunning(bool running);
     bool isMultiplayer() const;
+    QString selectedMode() const;
 
 signals:
-    void launchRequested(const QString &gameId, bool multiplayer);
+    void launchRequested(const QString &gameId, const QString &mode);
     void stopRequested(const QString &gameId);
 
 protected:
@@ -29,6 +30,10 @@ protected:
 
 private:
     void refreshArt();
+    void updateClientButton();
+    void openClientPicker();
+    void installBo3Client(const QString &kind, bool notifyWhenDone, bool launchWhenReady);
+    void installS1Client(bool notifyWhenDone, bool launchWhenReady);
 public:
     void retranslate();
 private:
@@ -43,6 +48,10 @@ private:
     QLabel *m_path = nullptr;
     QRadioButton *m_spzm = nullptr;
     QRadioButton *m_mp = nullptr;
+    QRadioButton *m_sp = nullptr;
+    QRadioButton *m_sv = nullptr;
     QPushButton *m_play = nullptr;
+    QPushButton *m_clientBtn = nullptr;
     bool m_running = false;
+    qint64 m_blockLaunchUntil = 0;
 };

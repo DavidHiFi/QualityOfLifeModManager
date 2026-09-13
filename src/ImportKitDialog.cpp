@@ -2,6 +2,7 @@
 #include "AppSettings.h"
 #include "ArchiveTool.h"
 #include "Downloader.h"
+#include "UpdateService.h"
 
 #include <QCoreApplication>
 #include <QDir>
@@ -132,6 +133,7 @@ void ImportKitDialog::startDownload()
             QFile::remove(datPath);
             return extractErr.isEmpty() ? tr("Falha ao extrair pu.dat") : extractErr;
         }
+        UpdateService::stampFile(QStringLiteral("pu"), QString(), datPath);
         QFile::remove(datPath);
         if (!QFileInfo::exists(AppSettings::localPuBootstrapper()))
             return tr("Extraido, mas o bootstrapper nao apareceu em pu/bin.");

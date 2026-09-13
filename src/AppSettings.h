@@ -1,21 +1,31 @@
 #pragma once
 #include <QString>
+#include <QStringList>
 
 // Settings stored in LanLauncher.ini plus session state.
 class AppSettings
 {
 public:
-    QString versionNum = "1.1.0";
-    QString theme      = "DarkAmber";
+    QString theme = "nocturne";
     QString username;
     QString plutoniumInstance;
     QString waw;
     QString bo1;
     QString bo2;
     QString mw3;
+    QString aw;
+    QString bo3;
+    QString bo3Client = "cll"; // cll | competitive
+    bool bo3ClientChosen = false;
+    bool awClientReady = false;
+    QString bo3CllArgs = QStringLiteral("-launch -noconsole -nowatermark -nointro");
+    QString bo3CompArgs = QStringLiteral("-nointro");
     bool setupCompleted = false;
     QString language = "en";
     bool homeEnabled = true;
+    QStringList gameOrder;
+    bool gameOrderHintSeen = false;
+    bool checkUpdatesOnStart = true;
 
     QString modId;
     QString gameId;

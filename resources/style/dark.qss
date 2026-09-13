@@ -433,11 +433,17 @@ QLabel#DialogIcon { padding-right: 6px; }
 #HeroSub, #HeroPath { color: #c5c6da; }
 #HeroPath { color: #9697ad; font-size: 9pt; }
 
-#PlayButton, #StopButton {
-    min-height: 42px;
+#PlayButton, #StopButton, #ClientGearButton {
+    min-height: 48px;
+    max-height: 48px;
     font-size: 11.5pt;
     font-weight: 700;
-    padding: 10px 28px;
+    padding: 0 28px;
+}
+#ClientGearButton {
+    min-width: 48px;
+    max-width: 48px;
+    padding: 0;
 }
 
 #AboutColumn { background: transparent; }
@@ -544,5 +550,7 @@ QPushButton#HeroDot:checked { background-color: #9184d9; }
 #ModCard:hover { border: 1px solid #4a4670; background-color: #212439; }
 
 #ModCardTitle { color: #f4f4f7; font-size: 10pt; font-weight: 600; }
+#ModCardInstalled { color: #7ddea0; font-size: 8.5pt; font-weight: 600; }
+#ModCardUpdate { color: #f0c36d; font-size: 8.5pt; font-weight: 600; }
 #ModCardMeta { color: #8688a1; font-size: 8.5pt; }
 #ModTags { color: #b6acea; font-size: 9pt; }

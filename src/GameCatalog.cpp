@@ -36,7 +36,30 @@ QList<Game> all()
         {"t5",  "Black ops",          "T5",  "Black Ops",          "Call of Duty · 2010", true},
         {"t6",  "Black ops II",       "T6",  "Black Ops II",       "Call of Duty · 2012", true},
         {"iw5", "Modern Warfare 3",   "IW5", "Modern Warfare 3",   "Call of Duty · 2011", false},
+        {"s1",  "Advanced Warfare",   "S1",  "Advanced Warfare",   "Call of Duty · 2014", true},
+        {"t7",  "Black ops III",      "T7",  "Black Ops III",      "Call of Duty · 2015", true},
     };
+}
+
+QList<Game> ordered(const QStringList &codes)
+{
+    const QList<Game> base = all();
+    QList<Game> out;
+    QStringList used;
+    for (const QString &code : codes) {
+        for (const Game &g : base) {
+            if (g.code.compare(code, Qt::CaseInsensitive) == 0 && !used.contains(g.code)) {
+                out << g;
+                used << g.code;
+                break;
+            }
+        }
+    }
+    for (const Game &g : base) {
+        if (!used.contains(g.code))
+            out << g;
+    }
+    return out;
 }
 
 Game byCode(const QString &code)
@@ -76,6 +99,8 @@ QString backgroundPath(const QString &code, const QString &variant)
     if (!variant.isEmpty())
         stems << code + "_bg_" + variant;
     stems << code + "_bg";
+    if (variant != QLatin1String("mp"))
+        stems << code + "_bg_mp";
 
     for (const QString &stem : stems) {
         QString p = firstExisting(variants(userMediaDir(), stem));

@@ -23,7 +23,8 @@ class HomePage : public QWidget
 public:
     explicit HomePage(AppSettings &settings, QWidget *parent = nullptr);
 
-    void reload();                                // rele o cll_home.json
+    void reload();
+    void refreshInstallState();
     void selectGame(const QString &gameId);       // "" / "all" = todos
     QString selectedGame() const { return m_gameFilter; }
     void retranslate();
@@ -50,6 +51,7 @@ private:
 
     AppSettings &m_settings;
     HomeCatalog::Catalog m_catalog;
+    HomeCatalog::InstallIndex m_installs;
 
     QLineEdit *m_search = nullptr;
     QWidget *m_filterBar = nullptr;

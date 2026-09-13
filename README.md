@@ -1,7 +1,8 @@
 # Cod Lan Launcher (CLL)
-Offline launcher to play **Call of Duty** via [Plutonium](https://plutonium.pw/) on LAN, without needing to log in or have the official client open.
 
-### Supported Langs:
+![Cod Lan Launcher](https://i.imgur.com/xHyfkQH.png)
+
+Supported languages:
 
 ![English](https://img.shields.io/badge/lang-English-blue)
 ![Português](https://img.shields.io/badge/lang-Portugu%C3%AAs-green)
@@ -12,158 +13,200 @@ Offline launcher to play **Call of Duty** via [Plutonium](https://plutonium.pw/)
 
 ---
 
-![image](https://i.imgur.com/4e0GkZ3.png)
+Offline launcher for **Call of Duty** on LAN mode — no login, no official client left open. From **v1.2.0** it also launches **Advanced Warfare** and **Black Ops III** with standalone clients.
 
-Made by **MestreTM**. The original idea comes from LanLauncher by [JugAndDoubleTap](https://github.com/JugAndDoubleTap/LanLauncher).
+Made by **MestreTM**. Original idea: LanLauncher by [JugAndDoubleTap](https://github.com/JugAndDoubleTap/LanLauncher).
 
-Repository: [github.com/MestreTM/CLL-CodLanLauncher](https://github.com/MestreTM/CLL-CodLanLauncher)
+Repository: [github.com/MestreTM/CLL-Cod-Lan-Launcher](https://github.com/MestreTM/CLL-Cod-Lan-Launcher)
 
-About **40% of this code was vibecoded** — written with AI assistance and then reviewed, tested, and fine-tuned by hand.
+The code is open source. The portable `.exe` is on [Releases](../../releases), not in this tree.
 
-The code is open source. The ready-to-use `.exe` is available in the [Releases](../../releases), not in this repository.
+App version lives in one place: `src/Version.h` (`CLL_VERSION`).
 
 ## Games
 
-| Code | Game |
-| --- | --- |
-| T4 | Call of Duty: World at War |
-| T5 | Call of Duty: Black Ops |
-| T6 | Call of Duty: Black Ops II |
-| IW5 | Call of Duty: Modern Warfare 3 |
+| Code | Game | Client |
+| --- | --- | --- |
+| T4 | Call of Duty: World at War | Plutonium |
+| T5 | Call of Duty: Black Ops | Plutonium |
+| T6 | Call of Duty: Black Ops II | Plutonium |
+| IW5 | Call of Duty: Modern Warfare 3 | Plutonium |
+| S1 | Call of Duty: Advanced Warfare | S1-CLL (`s1.exe`) |
+| T7 | Call of Duty: Black Ops III | T7-CLL or BOIII Community |
+
+Modes: multiplayer and zombies on Plutonium titles. Advanced Warfare also has campaign and survival. Black Ops III always starts with `-launch` (no separate binaries).
 
 ## What the program does
 
-- First-launch wizard: language, Plutonium Portable or existing installation, nickname, and game folders
-- Automatic Steam detection (registry + `libraryfolders.vdf`) and common folders
-- Launch multiplayer or zombies/solo, with a button to kill the process
-- **Plutonium Portable** kit (`pu.dat`) downloaded and extracted into `./pu`, no official installation required
-- Also accepts an existing Plutonium install found in `%LOCALAPPDATA%\Plutonium`
-- Mods and maps: zip / rar / 7z / exe / `.cll`, including mixed packages (`storage/` + `steam/`)
-- Mod checkpoint: uninstalling restores the original files and deletes the backup
-- LAN server (beta): starts and stops the dedicated server, edits configs, lists the machine's IPs (including `127.0.0.1`), and shows how to connect in-game
-- Server config packs for T4 / T5 / T6 by [xerxes-at](https://github.com/xerxes-at)
-- Four languages: English (default), Portuguese, Spanish, Russian
-- A single `LanLauncherQt.exe` — art, icons, theme, and translations are all embedded
+- First-run wizard: language + theme, Plutonium Portable or an existing install, nickname, game folders (scrollable)
+- Themes (Nocturne, Classic Things dark/light) chosen in the wizard and in Settings
+- Steam folder detection (registry + `libraryfolders.vdf`)
+- **Home** catalog of mods (remote `cll_home.json`), with installed-state badges and image cache
+- Sidebar: Home first (can be hidden in Settings), games list you can reorder, tools
+- Launch / stop the game process (including S1 and T7 clients)
+- **Plutonium Portable** (`pu.dat`) into `./pu`, or `%LOCALAPPDATA%\Plutonium`
+- **Mods**: zip / rar / 7z / exe / `.cll`, drag-and-drop, GitHub / custom host manifests, compressed packs, progress, uninstall + rollback
+- LAN dedicated server (beta): start/stop, configs, local IPs
+- Built-in updater against `cll_update.json` (launcher, portable kit, T7-CLL, S1-CLL, BOIII Community)
+- Languages: English, Portuguese, Spanish, Russian (no restart)
+- One portable exe (`CodLanLaucher.exe`) with art, icons, themes and translations embedded
+
+## Home catalog
+
+`Home` loads [cll_home.json](https://mestretm.github.io/CLL-Cod-Lan-Launcher/cll_home.json). Cards show cover, game, author and an installed badge when the mod is already on disk.
+
+**Install** / **Details** follow the language. Covers can be local files or `https://` URLs.
+
+Toggle **Show Home tab** in Settings if you want the catalog hidden.
 
 ## Mods
 
-The launcher can install maps and mods without copying files by hand.
+### Manual import
 
-### Generic packages
+On **Mods**, drop or pick a `.zip`, `.rar`, `.7z`, `.exe`, `.cll`, or paste a GitHub / custom host link.
 
-Drop a `.zip`, `.rar`, `.7z` or `.exe` on the **Mods** tab (or pick it with the file button).
+Generic archives without a CLL manifest still open the installer. Mixed packs (`storage/` → Plutonium, `steam/` → game folder) are sorted automatically. Confirm the plan; replaced files can be backed up.
 
-If the archive has no CLL manifest, the path is loaded and the usual installer runs. Mixed packs that contain both `storage/` (Plutonium) and `steam/` (game folder) are sorted automatically. You confirm the plan and choose whether replaced files become a backup.
-
-### CLL packs (`.cll` or a zip with `cll_installer.json`)
-
-A **CLL** pack is a zip / rar / 7z that includes `cll_installer.json`. Renaming that archive to `.cll` is optional — the launcher also detects the JSON inside a normal zip.
-
-The manifest tells the installer where each folder goes:
+### CLL packs (`.cll` or zip with `cll_installer.json`)
 
 | Field | Meaning |
 | --- | --- |
 | `name`, `version`, `author`, `description` | Shown in the install dialog |
-| `game` | Target title (`t4`, `t5`, `t6`, `iw5`) |
+| `game` | `t4`, `t5`, `t6`, `iw5` |
 | `folders[].from` | Folder inside the archive |
-| `folders[].to` | `pu_folder` (Plutonium / `./pu`) or `game_folder` (Steam/game install) |
-| `folders[].dest` | Relative destination under that root |
+| `folders[].to` | `pu_folder` or `game_folder` |
+| `folders[].dest` | Relative path under that root |
 
-Example:
+Sample: `docs/cll_installer.example.json`.
 
-```json
-{
-  "name": "Zombies Declassified Beta 1",
-  "version": "1.0",
-  "author": "Logo2k",
-  "description": "A pc port of the cancelled DLC5 Expansion",
-  "game": "t6",
-  "folders": [
-    { "from": "ZombiesDeclassified_BETA1/storage", "to": "pu_folder", "dest": "storage" },
-    { "from": "ZombiesDeclassified_BETA1/steam/zone", "to": "game_folder", "dest": "zone" }
-  ]
-}
+### GitHub / custom host
+
+Paste a repo URL or a direct `manifest.json` link. The launcher reads `/releases/latest/download/manifest.json` (or your host URL), then `mod.json`, queues files, retries failed downloads, and stores `download.json` next to the mod for later diffs (changed / missing / deleted).
+
+Compressed releases (`bundle` → `pack.zip` / `pack.7z`) extract `Plutonium/` into the Plutonium instance and `steam/` into the game folder. Roots use `PLUTO_T6` / `PLUTO_T5` / `PLUTO_T4` / `PLUTO_IW5`.
+
+If a release contains `.exe` / `.dll`, a warning is shown (origin is not verified). Failed files can be copied as URL + destination for a manual retry.
+
+### Uninstall
+
+Each install writes a checkpoint. Uninstall deletes new files, restores overwritten ones, then drops the backup.
+
+## Black Ops III clients
+
+Gear next to **Start** (same height as Start):
+
+1. **T7-CLL** (default) — [MestreTM/t7-cll](https://github.com/MestreTM/t7-cll) latest `t7_cll.zip`, extracted into the game root. LAN-oriented, no watermark.
+2. **Competitive — (Boiii-Community)** — `boiii.exe` from the community `updater.json` (SHA-1).
+
+First Start downloads T7-CLL after an OK confirmation. Switching clients in the gear dialog shows “download complete”. Competitive has an extra tab for launch arguments (empty by default, with Reset). T7-CLL defaults include `-launch -noconsole -nowatermark -nointro`. A small watcher dismisses the community Error dialog (`#32770`).
+
+## Advanced Warfare
+
+First Start can download [S1-CLL](https://github.com/MestreTM/s1-cll) `s1.exe` into the game folder (`releases/latest`). Launch flags: `-multiplayer` / `-zombies` / `-singleplayer` / `-survival`, plus `-noconsole -nowatermark`.
+
+## Updates
+
+Feed: [cll_update.json](https://mestretm.github.io/CLL-Cod-Lan-Launcher/cll_update.json)
+
+| Item | How it is compared |
+| --- | --- |
+| Cod Lan Launcher | Version in `src/Version.h` vs tag in the feed |
+| `pu.dat` | SHA-1 of the whole pack |
+| `t7_cll.zip` | SHA-1 of the archive |
+| `s1.exe` | SHA-1 of the file |
+| BOIII Community | SHA-1 from GitLab `updater.json` (`new version` in the UI) |
+
+An older version on one item is skipped; the rest of the feed is still checked.
+
+On startup a dialog lists pending updates (unless disabled). **Don't notify me about updates** turns auto-check off. Settings has the same toggle plus **Check for updates**.
+
+The launcher can replace itself: it downloads a new exe, starts a helper process, exits, the helper swaps the file and relaunches.
+
+Regenerate the feed:
+
+```bat
+python scripts\gen_cll_update.py -o cll_update.json
 ```
 
-Drag the file onto **Mods**: the correct game is selected, a card shows name / author / version / description, and **Install** / **Cancel** run with a progress bar.
+Hashes in the JSON use the field `hash` (SHA-1). Archives list child files the same way.
 
-A sample manifest lives in `docs/cll_installer.example.json`.
+## Sidebar
 
-### Uninstall and checkpoints
-
-Every install writes a checkpoint of added and replaced files. Removing the mod from the manager:
-
-1. Deletes files the pack created
-2. Restores anything it overwrote
-3. Drops the backup folder when that finishes
-
-The list shows the **name from the JSON** when the pack is a CLL install, not the raw folder name.
+- Home icon is larger; Mods / Server / Settings / About stay compact
+- Pencil next to **GAMES** enters organize mode (dimmed UI, drag handles, first-time tip with OK)
+- Order is saved in `LanLauncher.ini`
 
 ## How to use
 
-1. Download the executable from the **Releases** page
-2. Put the `.exe` in a writable folder
-3. On first launch, choose the language and client (Portable or an already installed Plutonium)
-4. Check the games you own
-5. Click **Start**
+1. Download the exe from **Releases**
+2. Put it in a writable folder
+3. First launch: language, theme, Portable kit or existing Plutonium, games you own
+4. Open a game tab and click **Start**
 
-To connect to a LAN server: in-game, press `` ` `` (below Esc) and type `connect IP:port`.
+LAN: in-game press `` ` `` and type `connect IP:port`.
 
 ## Building
 
-Requires Qt 6 (Widgets, Network, Concurrent, Svg) and CMake 3.16+.
+Qt 6 (Widgets, Network, Concurrent, Svg) and CMake 3.16+.
 
-Static build on Windows, with the prefix at `Y:\QT\6.11.2-static`:
+Static build (example prefix `Y:\QT\6.11.2-static`):
 
 ```bat
 scripts\build-app.bat
 ```
 
-The result is placed in `dist-static\LanLauncherQt.exe`.
+Output: `dist-static\CodLanLaucher.exe`.
 
-Dynamic build:
+Dynamic:
 
 ```bat
 cmake -S . -B build -DCMAKE_PREFIX_PATH=C:\Qt\6.11.2\mingw_64
 cmake --build build --config Release
 ```
 
+Bump the release version only in `src/Version.h`.
+
 ## Translations
 
-The JSON files in `resources/i18n/` are embedded in the executable via `resources.qrc`.
+JSON in `resources/i18n/` is embedded via `resources.qrc`.
 
-- The key is the Portuguese text from `tr()` in the C++ code
-- `en.json`, `es.json`, `ru.json` translate it
-- `pt_BR.json` only fixes accentuation
+- Keys are the Portuguese `tr()` source strings
+- `en.json`, `es.json`, `ru.json` translate them
+- `pt_BR.json` mostly fixes accents
 
-To add another language: copy `en.json`, translate the values, list the file in the `.qrc`, and register the code in `I18n::codes()`.
+To add a language: copy `en.json`, translate, add it to the `.qrc`, register it in `I18n::codes()`.
 
-## Packaging the Portable kit
+## Portable kit
 
-`pack_pu.py` generates `pu.dat` (not included in the launcher binary):
+`pack_pu.py` builds `pu.dat` (not shipped inside the exe):
 
 ```bat
 python pack_pu.py
 ```
 
-Format: magic `LLQTPKG1` + size + 7z with XOR.
+Format: magic `LLQTPKG1` + size + XOR'd 7z.
 
 ## Structure
 
 ```
-src/           code
-src/pages/     screens (play, mods, server, settings, about)
-resources/     icons, art, theme, languages
-scripts/       static build
-pack_pu.py     generates pu.dat
+src/                 application code
+src/pages/           Home, Play, Mods, Server, Settings, About
+src/Version.h        CLL_VERSION
+src/UpdateService.*  cll_update.json client
+resources/           icons, art, themes, i18n
+scripts/             static build + gen_cll_update.py
 ```
 
 ## Credits
 
-- **MestreTM** — this launcher
-- **[JugAndDoubleTap](https://github.com/JugAndDoubleTap/LanLauncher)** — original LanLauncher in Python
-- **[xerxes-at](https://github.com/xerxes-at)** — T4 / T5 / T6 dedicated server config files
-- **Plutonium** and **Call of Duty** belong to their respective owners. This project is not affiliated with them.
+- **MestreTM** — Cod Lan Launcher
+- **[JugAndDoubleTap](https://github.com/JugAndDoubleTap/LanLauncher)** — original Python LanLauncher
+- **[xerxes-at](https://github.com/xerxes-at)** — T4 / T5 / T6 dedicated server configs
+- **[alterware.dev](https://alterware.dev)** — source for some standalone clients
+- **[boiii-community](https://gitlab.com/boiii-community/BOIII-Community)** — alternative BO3 client
+- **[ezz.lol](https://ezz.lol)** — native BO3 client source
+- **TehTurkishSpartan** — Turkish translation (external)
+- **Plutonium** and **Call of Duty** belong to their owners. This project is not affiliated with them.
 
 ## License
 

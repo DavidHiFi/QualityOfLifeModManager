@@ -6,6 +6,8 @@
 #include "SetupWizard.h"
 #include "Theme.h"
 #include "I18n.h"
+#include "UpdateService.h"
+#include "Version.h"
 
 #include "pages/PlayPage.h"
 #include "pages/HomePage.h"
@@ -24,19 +26,80 @@
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QFrame>
+#include <QEvent>
+#include <QMouseEvent>
+#include <QPainter>
+#include <QPainterPath>
+#include <QResizeEvent>
 #include <QtConcurrent/QtConcurrent>
+
+namespace {
+
+class GameGrip : public QWidget
+{
+public:
+    explicit GameGrip(QWidget *parent = nullptr) : QWidget(parent)
+    {
+        setFixedSize(14, 28);
+        setCursor(Qt::SizeAllCursor);
+        setObjectName("GameNavGrip");
+    }
+protected:
+    void paintEvent(QPaintEvent *) override
+    {
+        QPainter p(this);
+        p.setRenderHint(QPainter::Antialiasing, true);
+        const QColor c = Theme::color("TEXT_FAINT");
+        p.setBrush(c);
+        p.setPen(Qt::NoPen);
+        for (int row = 0; row < 3; ++row) {
+            for (int col = 0; col < 2; ++col) {
+                p.drawRoundedRect(QRectF(2 + col * 6, 6 + row * 7, 4, 4), 1.2, 1.2);
+            }
+        }
+    }
+};
+
+class DimOverlay : public QWidget
+{
+public:
+    QRect hole;
+    explicit DimOverlay(QWidget *parent = nullptr) : QWidget(parent)
+    {
+        setAttribute(Qt::WA_NoSystemBackground, false);
+        setAutoFillBackground(false);
+    }
+protected:
+    void paintEvent(QPaintEvent *) override
+    {
+        QPainter p(this);
+        p.setRenderHint(QPainter::Antialiasing, true);
+        QPainterPath dim;
+        dim.addRect(rect());
+        QPainterPath cut;
+        const int r = Theme::radius() ? 12 : 0;
+        cut.addRoundedRect(QRectF(hole).adjusted(-8, -8, 8, 8), r, r);
+        dim = dim.subtracted(cut);
+        p.fillPath(dim, QColor(8, 8, 14, 168));
+        p.setPen(QPen(QColor(Theme::accent()), 1.6));
+        p.setBrush(Qt::NoBrush);
+        p.drawRoundedRect(QRectF(hole).adjusted(-8, -8, 8, 8), r, r);
+    }
+};
+
+} // namespace
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
 {
     m_settings = AppSettings::loadForStartup();
     I18n::apply(m_settings.language);
-    Theme::apply();
+    Theme::apply(m_settings.theme);
 
     if (!m_settings.setupCompleted) {
         SetupWizard wizard(m_settings, nullptr);
         wizard.exec();
-        Theme::apply();
+        Theme::apply(m_settings.theme);
     }
 
     setWindowTitle(tr("Cod Lan Launcher"));
@@ -64,8 +127,6 @@ MainWindow::MainWindow(QWidget *parent)
     m_stack->addWidget(m_settingsPage);
     m_stack->addWidget(m_aboutPage);
 
-    // Content column: page header plus stack. The header hides
-    // on the play page, which is edge-to-edge art.
     auto *right = new QWidget(this);
     auto *rl = new QVBoxLayout(right);
     rl->setContentsMargins(0, 0, 0, 0);
@@ -75,6 +136,18 @@ MainWindow::MainWindow(QWidget *parent)
 
     outer->addWidget(right, 1);
     setCentralWidget(central);
+
+    m_organizeOverlay = new DimOverlay(this);
+    m_organizeOverlay->hide();
+    m_organizeOverlay->installEventFilter(this);
+
+    connect(&ThemeHub::instance(), &ThemeHub::themeChanged, this, [this]() {
+        for (auto *b : findChildren<QPushButton*>()) {
+            const QString path = b->property("iconPath").toString();
+            if (!path.isEmpty() && !b->property("rawIcon").toBool())
+                b->setIcon(Theme::icon(path));
+        }
+    });
 
     connect(m_homePage, &HomePage::installRequested, this, [this](const QString &modId) {
         showTool(ToolMods);
@@ -87,12 +160,28 @@ MainWindow::MainWindow(QWidget *parent)
     });
     connect(m_playPage, &PlayPage::launchRequested, this, &MainWindow::onLaunchGame);
     connect(m_playPage, &PlayPage::stopRequested, this, &MainWindow::onStopGame);
+    connect(m_modsPage, &ModsPage::catalogChanged, this, [this]() {
+        if (m_homePage)
+            m_homePage->refreshInstallState();
+    });
     connect(m_settingsPage, &SettingsPage::plutoniumFolderChanged, this, [this]() {
         m_modsPage->refreshList();
         m_serverPage->refreshList();
+        if (m_homePage)
+            m_homePage->refreshInstallState();
     });
     connect(m_settingsPage, &SettingsPage::homeEnabledChanged, this, [this](bool) {
         applyHomeVisibility();
+    });
+    connect(m_settingsPage, &SettingsPage::checkUpdatesRequested, this, [this]() {
+        if (UpdateService::prompt(this, m_settings, false))
+            qApp->quit();
+    });
+    connect(m_settingsPage, &SettingsPage::cancelled, this, [this]() {
+        if (m_settings.homeEnabled)
+            showTool(ToolHome);
+        else
+            selectGame(m_gameIndex);
     });
     connect(m_serverPage, &ServerPage::launchServerRequested, this, &MainWindow::onLaunchServer);
     connect(m_serverPage, &ServerPage::stopServerRequested, this, &MainWindow::onStopServer);
@@ -103,8 +192,15 @@ MainWindow::MainWindow(QWidget *parent)
     if (m_settings.homeEnabled)
         showTool(ToolHome);
     else
-        selectGame(2);
+        selectGame(m_gameIndex);
     connect(&I18nHub::instance(), &I18nHub::languageChanged, this, &MainWindow::retranslate);
+
+    if (m_settings.checkUpdatesOnStart) {
+        QTimer::singleShot(900, this, [this]() {
+            if (UpdateService::prompt(this, m_settings, true))
+                qApp->quit();
+        });
+    }
 }
 
 void MainWindow::retranslate()
@@ -125,6 +221,7 @@ void MainWindow::retranslate()
         m_toolButtons[i]->setText("  " + tools[i]);
     applyHeader(m_toolIndex);
     if (m_homeNavBtn) m_homeNavBtn->setText("  " + tr("Início"));
+    if (m_editGamesBtn) m_editGamesBtn->setToolTip(tr("Reorganizar jogos"));
     if (m_playPage) m_playPage->retranslate();
     if (m_homePage) m_homePage->retranslate();
     if (m_modsPage) m_modsPage->retranslate();
@@ -159,36 +256,64 @@ QWidget *MainWindow::buildSidebar()
     layout->addLayout(brand);
     layout->addSpacing(12);
 
-    m_homeNavBtn = new QPushButton(QIcon(":/icons/main.svg"), "  " + tr("Início"), sidebar);
+    m_homeNavBtn = new QPushButton(Theme::icon(":/icons/main.svg"), "  " + tr("Início"), sidebar);
+    m_homeNavBtn->setProperty("iconPath", ":/icons/main.svg");
     m_homeNavBtn->setObjectName("SidebarButton");
     m_homeNavBtn->setCheckable(true);
-    m_homeNavBtn->setIconSize(QSize(16, 16));
+    m_homeNavBtn->setIconSize(QSize(32, 32));
+    m_sidebar = sidebar;
     m_homeNavBtn->setCursor(Qt::PointingHandCursor);
     layout->addWidget(m_homeNavBtn);
     connect(m_homeNavBtn, &QPushButton::clicked, this, [this]() { showTool(ToolHome); });
     layout->addSpacing(10);
 
-    m_sidebarGames = new QLabel(tr("JOGOS"), sidebar);
+    auto *gamesHead = new QWidget(sidebar);
+    gamesHead->setObjectName("GamesNavHead");
+    gamesHead->setAttribute(Qt::WA_StyledBackground, false);
+    auto *gamesHeadLay = new QHBoxLayout(gamesHead);
+    gamesHeadLay->setContentsMargins(2, 2, 0, 2);
+    gamesHeadLay->setSpacing(6);
+    m_sidebarGames = new QLabel(tr("JOGOS"), gamesHead);
     m_sidebarGames->setObjectName("NavSection");
-    layout->addWidget(m_sidebarGames);
+    m_editGamesBtn = new QPushButton(Theme::icon(":/icons/pen.svg"), QString(), gamesHead);
+    m_editGamesBtn->setProperty("iconPath", ":/icons/pen.svg");
+    m_editGamesBtn->setObjectName("GameEditButton");
+    m_editGamesBtn->setFixedSize(22, 22);
+    m_editGamesBtn->setIconSize(QSize(12, 12));
+    m_editGamesBtn->setCursor(Qt::PointingHandCursor);
+    m_editGamesBtn->setFlat(true);
+    m_editGamesBtn->setToolTip(tr("Reorganizar jogos"));
+    m_editGamesBtn->setCheckable(true);
+    gamesHeadLay->addWidget(m_sidebarGames, 1);
+    gamesHeadLay->addWidget(m_editGamesBtn, 0, Qt::AlignRight | Qt::AlignVCenter);
+    layout->addWidget(gamesHead);
+    connect(m_editGamesBtn, &QPushButton::clicked, this, [this](bool on) { setOrganizeGames(on); });
 
-    const auto games = GameCatalog::all();
+    m_gamesBox = new QWidget(sidebar);
+    m_gamesBox->setObjectName("GamesNavBox");
+    m_gamesBox->setAttribute(Qt::WA_StyledBackground, false);
+    m_gamesLay = new QVBoxLayout(m_gamesBox);
+    m_gamesLay->setContentsMargins(0, 0, 0, 0);
+    m_gamesLay->setSpacing(3);
+
+    const auto games = GameCatalog::ordered(m_settings.gameOrder);
     for (int i = 0; i < games.size(); ++i) {
         const auto &g = games[i];
-        auto *btn = new QPushButton(sidebar);
+        auto *btn = new QPushButton(m_gamesBox);
         btn->setObjectName("GameNav");
         btn->setCheckable(true);
         btn->setCursor(Qt::PointingHandCursor);
         btn->setToolTip(g.title);
+        btn->setProperty("gameCode", g.code);
+        btn->setProperty("gameId", g.id);
         auto *hl = new QHBoxLayout(btn);
-        hl->setContentsMargins(8, 5, 8, 5);
-        hl->setSpacing(10);
+        hl->setContentsMargins(8, 5, 4, 5);
+        hl->setSpacing(8);
         auto *ic = new QLabel(btn);
         ic->setFixedSize(32, 32);
         ic->setPixmap(GameCatalog::icon(g.code, QSize(32, 32)));
         ic->setScaledContents(true);
         ic->setAttribute(Qt::WA_TransparentForMouseEvents);
-        // Sidebar uses the game name; the PNG logo is only on the hero.
         auto *txtCol = new QVBoxLayout();
         txtCol->setSpacing(0);
         auto *tag = new QLabel(g.shortLabel.toUpper(), btn);
@@ -199,12 +324,30 @@ QWidget *MainWindow::buildSidebar()
         nameLbl->setAttribute(Qt::WA_TransparentForMouseEvents);
         txtCol->addWidget(tag);
         txtCol->addWidget(nameLbl);
+        auto *grip = new GameGrip(btn);
+        grip->hide();
+        grip->installEventFilter(this);
         hl->addWidget(ic);
         hl->addLayout(txtCol, 1);
+        hl->addWidget(grip, 0, Qt::AlignVCenter);
         btn->setMinimumHeight(46);
-        layout->addWidget(btn);
+        m_gamesLay->addWidget(btn);
         m_gameButtons << btn;
-        connect(btn, &QPushButton::clicked, this, [this, i]() { selectGame(i); });
+        connect(btn, &QPushButton::clicked, this, [this, btn]() {
+            if (m_organizeGames)
+                return;
+            const int idx = m_gameButtons.indexOf(btn);
+            if (idx >= 0)
+                selectGame(idx);
+        });
+    }
+    layout->addWidget(m_gamesBox);
+    m_gameIndex = 0;
+    for (int i = 0; i < m_gameButtons.size(); ++i) {
+        if (m_gameButtons[i]->property("gameCode").toString() == QLatin1String("t6")) {
+            m_gameIndex = i;
+            break;
+        }
     }
 
     layout->addSpacing(8);
@@ -220,7 +363,11 @@ QWidget *MainWindow::buildSidebar()
         {tr("Sobre"), ":/icons/app.svg"},
     };
     for (int i = 0; i < tools.size(); ++i) {
-        auto *btn = new QPushButton(QIcon(tools[i].icon), "  " + tools[i].text, sidebar);
+        const bool rawIcon = (tools[i].icon == QLatin1String(":/icons/app.svg"));
+        auto *btn = new QPushButton(rawIcon ? QIcon(tools[i].icon) : Theme::icon(tools[i].icon),
+                                    "  " + tools[i].text, sidebar);
+        btn->setProperty("iconPath", tools[i].icon);
+        btn->setProperty("rawIcon", rawIcon);
         btn->setObjectName("SidebarButton");
         btn->setCheckable(true);
         btn->setIconSize(QSize(16, 16));
@@ -244,7 +391,7 @@ QWidget *MainWindow::buildSidebar()
     auto *fl = new QHBoxLayout(foot);
     fl->setContentsMargins(2, 0, 2, 0);
     fl->setSpacing(6);
-    auto *ver = new QLabel("v" + m_settings.versionNum, foot);
+    auto *ver = new QLabel(QStringLiteral("v") + QStringLiteral(CLL_VERSION), foot);
     ver->setObjectName("VersionBadge");
     auto *repo = new QPushButton(QStringLiteral("GitHub"), foot);
     repo->setObjectName("RepoLink");
@@ -309,7 +456,7 @@ void MainWindow::applyHeader(int toolIndex)
         info = {tr("Servidor LAN (beta)"), tr("Hospede uma partida na sua rede local."), false};
         break;
     case ToolSettings:
-        info = {tr("Configuracoes"), tr("Apelido, pastas do Plutonium e dos jogos."), true};
+        info = {tr("Configuracoes"), tr("Apelido, pastas do Plutonium e dos jogos."), false};
         break;
     default:
         info = {tr("Sobre"), tr("Versao, creditos e licencas."), false};
@@ -325,9 +472,11 @@ void MainWindow::selectGame(int gameIndex)
 {
     m_gameIndex = gameIndex;
     m_toolIndex = ToolPlay;
-    const auto g = GameCatalog::all().at(gameIndex);
-    m_playPage->setGame(g.id);
-    m_playPage->setRunning(m_runningPid > 0 && m_runningGameId == g.id);
+    const QString id = (gameIndex >= 0 && gameIndex < m_gameButtons.size())
+                           ? m_gameButtons[gameIndex]->property("gameId").toString()
+                           : GameCatalog::all().at(0).id;
+    m_playPage->setGame(id);
+    m_playPage->setRunning(m_runningPid > 0 && m_runningGameId == id);
     m_stack->setCurrentWidget(m_playPage);
     applyHeader(ToolPlay);
     syncNav();
@@ -351,11 +500,15 @@ void MainWindow::showTool(int toolIndex)
         return;
     }
     m_toolIndex = toolIndex;
-    const QString gameId = GameCatalog::all().at(m_gameIndex).id;
+    const QString gameId = (m_gameIndex >= 0 && m_gameIndex < m_gameButtons.size())
+                               ? m_gameButtons[m_gameIndex]->property("gameId").toString()
+                               : QString();
     if (toolIndex == ToolMods)
         m_modsPage->selectGame(gameId);
     else if (toolIndex == ToolServer)
         m_serverPage->selectGame(gameId);
+    else if (toolIndex == ToolSettings)
+        m_settingsPage->beginEdit();
     m_stack->setCurrentIndex(toolIndex);
     applyHeader(toolIndex);
     syncNav();
@@ -371,14 +524,24 @@ void MainWindow::syncNav()
         m_toolButtons[i]->setChecked(m_toolIndex == i + 2);
 }
 
-void MainWindow::onLaunchGame(const QString &gameId, bool multiplayer)
+void MainWindow::onLaunchGame(const QString &gameId, const QString &mode)
 {
     if (m_runningPid > 0)
         return;
-    if (gameId == "World at War") m_settings.modeId = multiplayer ? "t4mp" : "t4sp";
-    else if (gameId == "Black ops") m_settings.modeId = multiplayer ? "t5mp" : "t5sp";
-    else if (gameId == "Black ops II") m_settings.modeId = multiplayer ? "t6mp" : "t6zm";
+    if (gameId == "World at War") m_settings.modeId = (mode == QLatin1String("mp")) ? "t4mp" : "t4sp";
+    else if (gameId == "Black ops") m_settings.modeId = (mode == QLatin1String("mp")) ? "t5mp" : "t5sp";
+    else if (gameId == "Black ops II") m_settings.modeId = (mode == QLatin1String("mp")) ? "t6mp" : "t6zm";
     else if (gameId == "Modern Warfare 3") m_settings.modeId = "iw5mp";
+    else if (gameId == "Advanced Warfare") {
+        if (mode == QLatin1String("sp")) m_settings.modeId = "s1sp";
+        else if (mode == QLatin1String("sv")) m_settings.modeId = "s1sv";
+        else if (mode == QLatin1String("zm")) m_settings.modeId = "s1zm";
+        else m_settings.modeId = "s1mp";
+    } else if (gameId == "Black ops III") {
+        if (mode == QLatin1String("sp")) m_settings.modeId = "t7sp";
+        else if (mode == QLatin1String("zm")) m_settings.modeId = "t7zm";
+        else m_settings.modeId = "t7mp";
+    }
     m_settings.gameId = gameId;
     m_settings.saveToIni();
 
@@ -397,6 +560,8 @@ void MainWindow::onStopGame(const QString &)
 {
     if (m_runningPid > 0)
         GameLauncher::terminatePid(m_runningPid);
+    if (m_runningGameId == QLatin1String("Black ops III"))
+        GameLauncher::terminateFolderProcesses(m_settings.bo3);
     m_runningPid = 0;
     m_runningGameId.clear();
     m_playPage->setRunning(false);
@@ -405,7 +570,16 @@ void MainWindow::onStopGame(const QString &)
 
 void MainWindow::onPollRunningProcess()
 {
-    if (m_runningPid > 0 && !GameLauncher::isPidRunning(m_runningPid)) {
+    if (m_runningGameId == QLatin1String("Black ops III")) {
+        const qint64 live = GameLauncher::findProcessInFolder(m_settings.bo3);
+        if (live > 0) {
+            m_runningPid = live;
+        } else if (m_runningPid > 0) {
+            m_runningPid = 0;
+            m_runningGameId.clear();
+            m_playPage->setRunning(false);
+        }
+    } else if (m_runningPid > 0 && !GameLauncher::isPidRunning(m_runningPid)) {
         m_runningPid = 0;
         m_runningGameId.clear();
         m_playPage->setRunning(false);
@@ -450,4 +624,162 @@ void MainWindow::onStopServer()
 }
 
 void MainWindow::onSaveSettings() { m_settings.saveToIni(); }
+
+void MainWindow::persistGameOrder()
+{
+    QStringList codes;
+    for (auto *b : m_gameButtons)
+        codes << b->property("gameCode").toString();
+    m_settings.gameOrder = codes;
+    m_settings.saveToIni();
+}
+
+void MainWindow::updateOrganizeOverlay()
+{
+    if (!m_organizeOverlay || !m_gamesBox)
+        return;
+    m_organizeOverlay->setGeometry(rect());
+    auto *dim = static_cast<DimOverlay *>(m_organizeOverlay);
+    QWidget *head = m_editGamesBtn ? m_editGamesBtn->parentWidget() : nullptr;
+    QRect hole = m_gamesBox->rect();
+    hole.moveTopLeft(m_gamesBox->mapTo(this, QPoint(0, 0)));
+    if (head) {
+        QRect headR = head->rect();
+        headR.moveTopLeft(head->mapTo(this, QPoint(0, 0)));
+        hole = hole.united(headR);
+    }
+    dim->hole = hole.adjusted(-4, -2, 4, 4);
+    QRegion mask(dim->rect());
+    mask -= QRegion(dim->hole.adjusted(-8, -8, 8, 8));
+    dim->setMask(mask);
+    dim->update();
+    if (m_organizeHint && m_organizeHint->isVisible()) {
+        const QPoint pos(hole.right() + 22, hole.top() + 8);
+        m_organizeHint->move(pos);
+        m_organizeHint->raise();
+    }
+}
+
+void MainWindow::setOrganizeGames(bool on)
+{
+    m_organizeGames = on;
+    if (m_editGamesBtn)
+        m_editGamesBtn->setChecked(on);
+    for (auto *b : m_gameButtons) {
+        if (auto *grip = b->findChild<QWidget *>(QStringLiteral("GameNavGrip")))
+            grip->setVisible(on);
+    }
+    if (!m_organizeOverlay)
+        return;
+    if (!on) {
+        if (m_organizeHint)
+            m_organizeHint->hide();
+        m_organizeOverlay->hide();
+        persistGameOrder();
+        return;
+    }
+    m_organizeOverlay->show();
+    m_organizeOverlay->raise();
+    updateOrganizeOverlay();
+
+    if (!m_settings.gameOrderHintSeen) {
+        if (!m_organizeHint) {
+            m_organizeHint = new QFrame(this);
+            m_organizeHint->setObjectName("OrganizeHint");
+            auto *lay = new QVBoxLayout(m_organizeHint);
+            lay->setContentsMargins(16, 14, 16, 14);
+            lay->setSpacing(6);
+            auto *title = new QLabel(tr("Reorganize seus jogos"), m_organizeHint);
+            title->setObjectName("OrganizeHintTitle");
+            auto *body = new QLabel(tr("Arraste pelos quadradinhos à direita de cada aba para mudar a ordem. A lista fica salva neste PC."), m_organizeHint);
+            body->setObjectName("OrganizeHintBody");
+            body->setWordWrap(true);
+            body->setFixedWidth(230);
+            lay->addWidget(title);
+            lay->addWidget(body);
+            auto *ok = new QPushButton(tr("OK"), m_organizeHint);
+            ok->setProperty("cssClass", "primary");
+            ok->setCursor(Qt::PointingHandCursor);
+            ok->setMinimumHeight(32);
+            lay->addWidget(ok, 0, Qt::AlignRight);
+            connect(ok, &QPushButton::clicked, this, [this]() {
+                m_settings.gameOrderHintSeen = true;
+                m_settings.saveToIni();
+                if (m_organizeHint)
+                    m_organizeHint->hide();
+            });
+            m_organizeHint->setStyleSheet(
+                QStringLiteral("QFrame#OrganizeHint { background:%1; border:1px solid %2; border-radius:%3px; }"
+                               "QLabel#OrganizeHintTitle { color:%4; font-weight:600; font-size:13px; }"
+                               "QLabel#OrganizeHintBody { color:%5; font-size:12px; }")
+                    .arg(Theme::token("SURFACE"), Theme::token("LINE"),
+                         Theme::radius() ? QStringLiteral("10") : QStringLiteral("0"),
+                         Theme::token("TEXT_STRONG"), Theme::token("TEXT_DIM")));
+        }
+        m_organizeHint->adjustSize();
+        m_organizeHint->show();
+        m_organizeHint->raise();
+        updateOrganizeOverlay();
+    }
+}
+
+void MainWindow::resizeEvent(QResizeEvent *event)
+{
+    QMainWindow::resizeEvent(event);
+    if (m_organizeGames)
+        updateOrganizeOverlay();
+}
+
+bool MainWindow::eventFilter(QObject *obj, QEvent *event)
+{
+    if (obj == m_organizeOverlay && event->type() == QEvent::MouseButtonPress) {
+        setOrganizeGames(false);
+        return true;
+    }
+    if (obj->objectName() == QLatin1String("GameNavGrip") && m_organizeGames) {
+        auto *btn = qobject_cast<QPushButton *>(obj->parent());
+        if (!btn)
+            return QMainWindow::eventFilter(obj, event);
+        if (event->type() == QEvent::MouseButtonPress) {
+            m_dragBtn = btn;
+            m_dragOffset = static_cast<QMouseEvent *>(event)->globalPosition().toPoint().y();
+            btn->raise();
+            return true;
+        }
+        if (event->type() == QEvent::MouseMove && m_dragBtn) {
+            const int y = static_cast<QMouseEvent *>(event)->globalPosition().toPoint().y();
+            QPushButton *over = nullptr;
+            int overIdx = -1;
+            for (int i = 0; i < m_gameButtons.size(); ++i) {
+                const QRect r(m_gameButtons[i]->mapToGlobal(QPoint(0, 0)), m_gameButtons[i]->size());
+                if (r.contains(QPoint(r.center().x(), y))) {
+                    over = m_gameButtons[i];
+                    overIdx = i;
+                    break;
+                }
+            }
+            const int from = m_gameButtons.indexOf(m_dragBtn);
+            if (over && overIdx >= 0 && from >= 0 && overIdx != from) {
+                m_gameButtons.move(from, overIdx);
+                m_gamesLay->removeWidget(m_dragBtn);
+                m_gamesLay->insertWidget(overIdx, m_dragBtn);
+                if (m_gameIndex == from)
+                    m_gameIndex = overIdx;
+                else if (from < m_gameIndex && overIdx >= m_gameIndex)
+                    --m_gameIndex;
+                else if (from > m_gameIndex && overIdx <= m_gameIndex)
+                    ++m_gameIndex;
+                syncNav();
+            }
+            Q_UNUSED(y);
+            return true;
+        }
+        if (event->type() == QEvent::MouseButtonRelease) {
+            m_dragBtn = nullptr;
+            persistGameOrder();
+            return true;
+        }
+    }
+    return QMainWindow::eventFilter(obj, event);
+}
 

@@ -1,5 +1,4 @@
 #include "I18n.h"
-
 #include <QCoreApplication>
 #include <QFile>
 #include <QIODevice>

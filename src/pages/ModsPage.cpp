@@ -1,3 +1,4 @@
+#include "../Checkables.h"
 #include "ModsPage.h"
 #include "AppSettings.h"
 #include "ArchiveTool.h"
@@ -88,7 +89,7 @@ ModsPage::ModsPage(AppSettings &settings, QWidget *parent)
     headCol->addWidget(listTitle);
     head->addLayout(headCol, 1);
 
-    m_gameCombo = new QComboBox(listCard);
+    m_gameCombo = new Ui::ComboBox(listCard);
     m_gameCombo->addItems({"World at War", "Black ops", "Black ops II", "Modern Warfare 3"});
     m_gameCombo->setCurrentText("Black ops II");
     m_gameCombo->setMinimumWidth(200);
@@ -270,8 +271,10 @@ ModsPage::ModsPage(AppSettings &settings, QWidget *parent)
             m_installWatcher.setFuture(future);
             return;
         }
-        if (job == Job::Install || job == Job::Remove)
+        if (job == Job::Install || job == Job::Remove) {
             refreshList();
+            emit catalogChanged();
+        }
         if (err.isEmpty()) {
             if (job == Job::Remove)
                 QMessageBox::information(this, tr("Mods"), tr("Mod removido."));

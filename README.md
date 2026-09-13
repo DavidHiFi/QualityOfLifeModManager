@@ -1,6 +1,6 @@
 # Cod Lan Launcher (CLL)
 
-![Cod Lan Launcher](https://i.imgur.com/xHyfkQH.png)
+![Cod Lan Launcher](https://i.imgur.com/x2fN7uS.png)
 
 Supported languages:
 

@@ -15,7 +15,7 @@ namespace ArchiveTool
         SevenZipMissing,
     };
 
-    // Looks for 7z.exe next to the app (7z/ folder) or on PATH.
+    // Looks for bundled/system 7-Zip or a NanaZip command-line alias.
     QString findSevenZip();
     bool hasSevenZip();
 

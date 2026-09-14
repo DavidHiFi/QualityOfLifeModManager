@@ -86,6 +86,14 @@ QString findSevenZip()
         if (QFileInfo::exists(p))
             return p;
     }
+
+    // NanaZip registers NanaZipC.exe and, by default, a 7z.exe app execution
+    // alias in the user's WindowsApps directory. Both use the 7-Zip CLI syntax.
+    for (const char *name : {"NanaZipC.exe", "7z.exe", "7zz.exe", "7za.exe"}) {
+        const QString found = QStandardPaths::findExecutable(QString::fromLatin1(name));
+        if (!found.isEmpty())
+            return found;
+    }
 #endif
 
 #ifndef Q_OS_WIN

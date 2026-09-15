@@ -30,6 +30,12 @@ native bar: Windows still reserves its width, so rows get laid out to one width 
 another and the text smears. The mouse wheel is routed by hit test through an `IMessageFilter`
 because nothing on these pages takes focus.
 
+**The texture and sound packs are found by keyword, not by file name.** The texture pack has
+shipped as both `zm_qol-textures.zip` and `HD.Texture.Pack.zip`, and its contents sit under
+`HD Texture Pack/images/`. An exact-name lookup is why "Install everything" failed on its second
+step; copying from the wrong root is how the files end up one folder too deep, where the game never
+reads them. `PackRoot` picks the folder whose contents belong at the destination.
+
 **Mod packages come in three shapes** - the mod folder's contents at the zip root, one folder
 holding them, or a whole `Plutonium\storage\<game>\mods\<name>` tree. All three are handled in
 `InstallModFromFileAsync`. The third is what Octagonal Ascension ships, and mishandling it
@@ -101,6 +107,7 @@ and every check then fails with an empty tag - that is the rate limit, not a reg
 --setup / --uninstall      the install and removal windows
 --root <path>              use a different Plutonium folder (use this for any testing)
 --allow-multiple           skip the "already open" question and start another copy
+--ignore-running           testing only, and only with --root: install even though Plutonium is up
 ```
 
 Always test against `--root` pointing at a throwaway folder. The app writes to a real Plutonium

@@ -339,17 +339,17 @@ internal sealed class InstallerService
         if (source is null) throw new InvalidOperationException($"Could not find or download the {(kind == "images" ? "HD texture" : "custom sound")} pack.");
         if (backup) BackupKind(kind, false, progress);
         CopyTreeTracked(source, dest, kind, progress, kind == "images" ? ControllerNames.Append("hud_dpad_blood.iwi").ToHashSet(StringComparer.OrdinalIgnoreCase) : null);
-        if (kind == "images") ReapplyController(progress);
+        if (kind == "images") await ReapplyControllerAsync(progress);
         Log($"Installed {kind}");
     }
 
-    private void ReapplyController(IProgress<string>? progress)
+    private async Task ReapplyControllerAsync(IProgress<string>? progress)
     {
         var packFile = System.IO.Path.Combine(State, "controller-pack.txt");
         if (!File.Exists(packFile)) return;
         var pack = File.ReadAllText(packFile).Trim();
-        var source = ResolveControllerSource(pack);
-        if (source is null) { Log($"controller pack {pack} not in package, could not re-apply after texture install"); return; }
+        var source = await ResolveControllerSourceAsync(pack, progress);
+        if (source is null) { Log($"controller pack {pack} not found, could not re-apply after texture install"); return; }
         progress?.Report("Re-applying your controller icons");
         CopyTreeTracked(source, Images, "controller", progress ?? new Progress<string>());
     }
@@ -357,20 +357,38 @@ internal sealed class InstallerService
     internal async Task InstallControllerAsync(string pack, IProgress<string> progress)
     {
         Guard();
-        var root = ResolveControllerSource(pack) ?? throw new InvalidOperationException($"The {pack} controller pack is not in this package.");
+        var root = await ResolveControllerSourceAsync(pack, progress) ?? throw new InvalidOperationException($"Could not find or download the {ControllerFolder(pack)} pack.");
         var groups = Directory.EnumerateFiles(root, "*.iwi", SearchOption.AllDirectories).GroupBy(System.IO.Path.GetDirectoryName).OrderByDescending(g => g.Count()).FirstOrDefault();
         if (groups is null) throw new InvalidOperationException("The controller pack contains no IWI files.");
         RemoveTracked("controller", Images, progress);
         CopyTreeTracked(groups.Key!, Images, "controller", progress);
         Directory.CreateDirectory(State); File.WriteAllText(System.IO.Path.Combine(State, "controller-pack.txt"), pack);
-        await Task.CompletedTask;
     }
 
-    private string? ResolveControllerSource(string pack)
+    private static string ControllerFolder(string pack) =>
+        pack switch { "ps5" => "Dualsense Icons", "switch" => "Nintendo Switch Icons", _ => "Xbox One Buttons" };
+
+    /// <summary>
+    /// The icon folder for one pack: beside the app if a full download put it there, otherwise from
+    /// Controller.Icons.Pack.zip on GitHub, kept under the installer's state folder so the other two
+    /// packs and any later re-apply come off disk.
+    ///
+    /// Downloading was the missing half. Nothing ships these folders beside the exe - not the
+    /// installer, not the portable zip - so "Choose" could only ever answer "not in this package",
+    /// and a texture install silently dropped the icons the person had chosen.
+    /// </summary>
+    private async Task<string?> ResolveControllerSourceAsync(string pack, IProgress<string>? progress)
     {
-        var folder = pack switch { "ps5" => "Dualsense Icons", "switch" => "Nintendo Switch Icons", _ => "Xbox One Buttons" };
-        return FindPayload(folder);
+        var folder = ControllerFolder(pack);
+        if (FindPayload(folder) is { } beside) return beside;
+        var cache = System.IO.Path.Combine(State, "controller-packs");
+        if (FindIn(cache, folder) is { } cached) return cached;
+        await DownloadReleaseZipAsync("controller", cache, progress ?? new Progress<string>());
+        return FindIn(cache, folder);
     }
+
+    private static string? FindIn(string root, string folder) =>
+        Directory.Exists(root) ? Directory.EnumerateDirectories(root, folder, SearchOption.AllDirectories).FirstOrDefault() : null;
 
     internal async Task InstallReShadeAsync(IProgress<string> progress)
     {
@@ -839,7 +857,21 @@ internal sealed class InstallerService
     /// </summary>
     private async Task<string?> DownloadAssetAsync(string folder, IProgress<string> progress)
     {
-        var keyword = folder == "images" ? "texture" : "sound";
+        var temp = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "qol-series-installer", Guid.NewGuid().ToString("N"));
+        var unpacked = await DownloadReleaseZipAsync(folder == "images" ? "texture" : "sound", System.IO.Path.Combine(temp, folder), progress);
+        return unpacked is null ? null : PackRoot(unpacked, folder);
+    }
+
+    /// <summary>
+    /// Fetch a pack from the mod's releases and unpack it, newest release first.
+    ///
+    /// Matched on a keyword in the asset name, not on an exact file name. The texture pack has
+    /// shipped as both zm_qol-textures.zip and HD.Texture.Pack.zip, and asking for one exact name
+    /// meant the texture step of "Install everything" could only ever end in "could not find or
+    /// download".
+    /// </summary>
+    private async Task<string?> DownloadReleaseZipAsync(string keyword, string unpackTo, IProgress<string> progress)
+    {
         progress.Report($"Finding the {keyword} pack on GitHub");
         using var json = JsonDocument.Parse(await http.GetStringAsync($"https://api.github.com/repos/{Repo}/releases?per_page=30"));
         foreach (var release in json.RootElement.EnumerateArray()) foreach (var asset in release.GetProperty("assets").EnumerateArray())
@@ -850,9 +882,10 @@ internal sealed class InstallerService
             var zip = System.IO.Path.Combine(temp, assetName); progress.Report($"Downloading {assetName}");
             await using (var output = File.Create(zip)) await (await http.GetAsync(asset.GetProperty("browser_download_url").GetString(), HttpCompletionOption.ResponseHeadersRead)).Content.CopyToAsync(output);
             progress.Report("Unpacking");
-            var outputDir = System.IO.Path.Combine(temp, folder);
-            ZipFile.ExtractToDirectory(zip, outputDir);
-            return PackRoot(outputDir, folder);
+            Directory.CreateDirectory(unpackTo);
+            ZipFile.ExtractToDirectory(zip, unpackTo, true);
+            try { Directory.Delete(temp, true); } catch { }
+            return unpackTo;
         }
         return null;
     }

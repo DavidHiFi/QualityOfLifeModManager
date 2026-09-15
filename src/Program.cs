@@ -16,6 +16,11 @@ internal static class Program
             if (args[i].Equals("--root", StringComparison.OrdinalIgnoreCase) && i + 1 < args.Length) InstallerService.RootOverride = args[++i];
         }
 
+        // Testing only, and only ever with --root pointing somewhere throwaway: installing over a
+        // running game is what the check exists to stop. It is here so a test run does not have to
+        // close the Plutonium the person at the keyboard is using.
+        if (Has(args, "--ignore-running") && InstallerService.RootOverride.Length > 0) InstallerService.SkipRunningCheck = true;
+
         var service = new InstallerService();
         if (Has(args, "--status-json"))
         {

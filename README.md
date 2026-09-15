@@ -27,8 +27,10 @@ Windows 10 or 11, 64-bit. No .NET install needed — the runtime is inside the e
   Open a mod's folder, remove it, or add one from a `.zip`. Search when the list gets long.
 - **Requirements** — what Plutonium, the games and ReShade need from Windows, and what is missing.
   It tells you; it never installs anything on your behalf.
-- **Quality of Life for Black Ops II** — install or update the mod, HD textures, custom sounds and
-  controller icons, each with a backup taken first.
+- **The Quality Of Life mods** — install or update any mod in the
+  [series](https://github.com/DavidHiFi/Plutonium-QoL-Series), with its HD textures, custom sounds
+  and controller icons, each with a backup taken first. Black Ops II is ready now; World at War and
+  Black Ops appear here as they are built.
 - **Launch** — start any game through Plutonium, online or LAN, with your own player name.
 - **ReShade** — install the preset collection, or run the watchdog that puts it back when
   Plutonium clears it.

@@ -1,0 +1,16 @@
+# .NET build output
+bin/
+obj/
+
+# Release downloads, built by src/package.ps1 and attached to a GitHub release
+dist/
+
+# Written beside the exe at runtime - user state, not source
+settings.json
+
+# Windows / editor noise
+Thumbs.db
+desktop.ini
+.vs/
+.vscode/
+*.user

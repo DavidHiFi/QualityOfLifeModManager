@@ -1,6 +1,6 @@
 <div align="center">
 
-# Quality Of Life Series
+# Quality Of Life Mod Manager
 
 **The mod manager for Call of Duty Zombies on [Plutonium](https://plutonium.pw).**
 
@@ -12,8 +12,8 @@ Install, update, launch and remove mods for World at War, Black Ops and Black Op
 
 <br><br>
 
-<img src="https://img.shields.io/github/v/release/DavidHiFi/QualityOfLifeSeries?style=flat-square&label=version&color=5865F2&labelColor=161B22">
-<img src="https://img.shields.io/github/downloads/DavidHiFi/QualityOfLifeSeries/total?style=flat-square&label=downloads&color=5865F2&labelColor=161B22">
+<img src="https://img.shields.io/github/v/release/DavidHiFi/QualityOfLifeModManager?style=flat-square&label=version&color=5865F2&labelColor=161B22">
+<img src="https://img.shields.io/github/downloads/DavidHiFi/QualityOfLifeModManager/total?style=flat-square&label=downloads&color=5865F2&labelColor=161B22">
 <img src="https://img.shields.io/badge/platform-Windows-5865F2?style=flat-square&labelColor=161B22">
 
 </div>

@@ -20,8 +20,13 @@ Windows 10 or 11, 64-bit. No .NET install needed — the runtime is inside the e
 
 ## What it does
 
+- **Browse mods** — community mods with preview art, filtered by game, installed in one click.
+  The list ships inside the app and refreshes from [catalog.json](catalog.json), so mods can be
+  added without a new release.
 - **Installed mods** — every mod in your Plutonium mods folders, per game, with size and location.
   Open a mod's folder, remove it, or add one from a `.zip`. Search when the list gets long.
+- **Requirements** — what Plutonium, the games and ReShade need from Windows, and what is missing.
+  It tells you; it never installs anything on your behalf.
 - **Quality of Life for Black Ops II** — install or update the mod, HD textures, custom sounds and
   controller icons, each with a backup taken first.
 - **Launch** — start any game through Plutonium, online or LAN, with your own player name.

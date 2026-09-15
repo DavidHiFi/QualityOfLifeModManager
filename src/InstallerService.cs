@@ -335,9 +335,8 @@ internal sealed class InstallerService
     {
         Guard();
         var dest = kind == "images" ? Images : Zone;
-        var asset = kind == "images" ? "zm_qol-textures.zip" : "zm_qol-sounds.zip";
-        var source = FindPayload(kind) ?? await DownloadAssetAsync(asset, kind, progress);
-        if (source is null) throw new InvalidOperationException($"Could not find or download the {kind} pack.");
+        var source = FindPayload(kind) ?? await DownloadAssetAsync(kind, progress);
+        if (source is null) throw new InvalidOperationException($"Could not find or download the {(kind == "images" ? "HD texture" : "custom sound")} pack.");
         if (backup) BackupKind(kind, false, progress);
         CopyTreeTracked(source, dest, kind, progress, kind == "images" ? ControllerNames.Append("hud_dpad_blood.iwi").ToHashSet(StringComparer.OrdinalIgnoreCase) : null);
         if (kind == "images") ReapplyController(progress);
@@ -830,19 +829,47 @@ internal sealed class InstallerService
         return parent is null ? null : Directory.EnumerateDirectories(parent, name, SearchOption.AllDirectories).FirstOrDefault();
     }
 
-    private async Task<string?> DownloadAssetAsync(string assetName, string folder, IProgress<string> progress)
+    /// <summary>
+    /// Fetch the texture or sound pack from the mod's releases.
+    ///
+    /// Matched on a keyword in the asset name, not on an exact file name. The texture pack has
+    /// shipped as both zm_qol-textures.zip and HD.Texture.Pack.zip, and asking for one exact name
+    /// meant the texture step of "Install everything" could only ever end in "could not find or
+    /// download". Newest release first, so a pack that was re-attached to a later release wins.
+    /// </summary>
+    private async Task<string?> DownloadAssetAsync(string folder, IProgress<string> progress)
     {
-        progress.Report($"Finding {assetName} on GitHub");
+        var keyword = folder == "images" ? "texture" : "sound";
+        progress.Report($"Finding the {keyword} pack on GitHub");
         using var json = JsonDocument.Parse(await http.GetStringAsync($"https://api.github.com/repos/{Repo}/releases?per_page=30"));
         foreach (var release in json.RootElement.EnumerateArray()) foreach (var asset in release.GetProperty("assets").EnumerateArray())
         {
-            if (!asset.GetProperty("name").GetString()!.Equals(assetName, StringComparison.OrdinalIgnoreCase)) continue;
+            var assetName = asset.GetProperty("name").GetString() ?? "";
+            if (!assetName.EndsWith(".zip", StringComparison.OrdinalIgnoreCase) || !assetName.Contains(keyword, StringComparison.OrdinalIgnoreCase)) continue;
             var temp = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "qol-series-installer", Guid.NewGuid().ToString("N")); Directory.CreateDirectory(temp);
             var zip = System.IO.Path.Combine(temp, assetName); progress.Report($"Downloading {assetName}");
             await using (var output = File.Create(zip)) await (await http.GetAsync(asset.GetProperty("browser_download_url").GetString(), HttpCompletionOption.ResponseHeadersRead)).Content.CopyToAsync(output);
-            var outputDir = System.IO.Path.Combine(temp, folder); ZipFile.ExtractToDirectory(zip, outputDir); var inner = System.IO.Path.Combine(outputDir, folder); return Directory.Exists(inner) ? inner : outputDir;
+            progress.Report("Unpacking");
+            var outputDir = System.IO.Path.Combine(temp, folder);
+            ZipFile.ExtractToDirectory(zip, outputDir);
+            return PackRoot(outputDir, folder);
         }
         return null;
+    }
+
+    /// <summary>
+    /// The folder inside an unpacked pack whose contents belong at the destination. Packs have
+    /// shipped flat, wrapped in an "images"/"zone" folder, and wrapped in a named folder holding
+    /// that - copying the wrapper itself puts a useless directory where the game expects files.
+    /// </summary>
+    private static string PackRoot(string unpacked, string folder)
+    {
+        var inner = System.IO.Path.Combine(unpacked, folder);
+        if (Directory.Exists(inner)) return inner;
+        var dirs = Directory.GetDirectories(unpacked);
+        if (dirs.Length != 1 || Directory.GetFiles(unpacked).Length != 0) return unpacked;
+        var nested = System.IO.Path.Combine(dirs[0], folder);
+        return Directory.Exists(nested) ? nested : dirs[0];
     }
 
     private void CopyTreeTracked(string source, string dest, string kind, IProgress<string> progress, HashSet<string>? blocked = null)

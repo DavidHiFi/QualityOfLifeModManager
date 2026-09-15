@@ -365,7 +365,9 @@ internal sealed class MainForm : Form
         return p;
     }
     private FlowLayoutPanel Cards() => Page();
-    private Panel Hero(string title, string installed, string missing, string button, Func<Task> action)
+    // refresh: for a hero whose button installs something. Without it the two summary lines still
+    // read "not installed" after the install that just finished.
+    private Panel Hero(string title, string installed, string missing, string button, Func<Task> action, Action? refresh = null)
     {
         var hero = new RoundedPanel { Radius = 12, Margin = new Padding(0, 0, 0, 10), BackColor = Surface0, BorderColor = Surface0, HoverBorderColor = Surface0, Padding = new Padding(0) };
         var mark = new LogoMark { Radius = 10, BackColor = Surface1, BorderColor = Surface1, Glyph = "\uE7FC", GlyphColor = Teal, Artwork = artwork };
@@ -373,7 +375,7 @@ internal sealed class MainForm : Form
         var line1 = new Label { AutoSize = false, AutoEllipsis = true, UseMnemonic = false, TextAlign = ContentAlignment.MiddleLeft, Text = installed, ForeColor = installed.StartsWith("Nothing") ? Overlay2 : Green, Font = F(9), BackColor = Surface0 };
         var line2 = new Label { AutoSize = false, AutoEllipsis = true, UseMnemonic = false, TextAlign = ContentAlignment.MiddleLeft, Text = missing, ForeColor = missing.StartsWith("Everything") ? Green : Overlay2, Font = F(9), BackColor = Surface0 };
         var btn = new RoundButton { Radius = 16, Text = button, BackColor = Teal, HoverColor = Sky, ForeColor = Crust, Font = F(9, true), Cursor = Cursors.Hand };
-        btn.Click += async (_, _) => await Run(action, btn);
+        btn.Click += async (_, _) => await Run(action, btn, refresh);
         hero.Controls.Add(mark); hero.Controls.Add(head); hero.Controls.Add(line1); hero.Controls.Add(line2); hero.Controls.Add(btn);
         tips.SetToolTip(head, title); tips.SetToolTip(line1, installed); tips.SetToolTip(line2, missing);
         void LayoutHero()
@@ -603,21 +605,55 @@ internal sealed class MainForm : Form
     }
     private static string PageFooter(InstallStatus s) => !s.PlutoniumFound ? "Plutonium was not found. Run it once, then return here." : s.PlutoniumRunning ? "Close Plutonium before installing or removing files." : $"Plutonium: {s.Root}";
 
+    /// <summary>
+    /// The game, not the mod. Playing and the mods folder belong to Black Ops II; the pieces the
+    /// Quality of Life mod installs are one row that opens its own page. They used to sit on this
+    /// page together, which read as though the texture pack and the sound pack were part of the
+    /// game rather than part of one mod.
+    /// </summary>
     private void ShowT6()
     {
         currentPage = ShowT6;
-        var s = service.GetStatus(); Clear("Black Ops II", "Plutonium T6  •  Zombies"); Select("Black Ops II (T6)"); footer.Text = PageFooter(s);
-        var cards = HeroPage(Hero("Quality of Life", InstalledText(s), MissingText(s), "Play BO2 (LAN)", () => { LaunchGame("t6", "zm", true, false); return Task.CompletedTask; }));
-        cards.Controls.Add(Card("EVERYTHING", "Installs the mod, HD textures and custom sounds in order.", "recommended", "Install all", InstallEverything, true, ShowT6));
-        cards.Controls.Add(Card("The mod", "Installs or updates the five mod files. Saved menu settings stay in place.", s.Mod, "Install", InstallMod, true, ShowT6));
-        cards.Controls.Add(Card("HD texture pack", "Downloads the latest texture pack when it is not beside this app, with a backup of yours first.", s.Textures, "Install", () => InstallPack("images"), false, ShowT6));
-        cards.Controls.Add(Card("Custom sounds", "Downloads and installs the sound pack under Plutonium storage, with a backup of yours first.", s.Sounds, "Install", () => InstallPack("zone"), false, ShowT6));
-        cards.Controls.Add(Card("Controller icons", "Choose PlayStation 5, Nintendo Switch, or Xbox One prompts.", s.Controller, "Choose", () => { ShowController(); return Task.CompletedTask; }, false, ShowT6));
+        var s = service.GetStatus(); Clear("Black Ops II", "Plutonium T6  •  Zombies and Multiplayer"); Select("Black Ops II (T6)"); footer.Text = PageFooter(s);
+        // The hero's title is not the page title again: the page heading already says Black Ops II,
+        // and this card is the install summary.
+        var cards = HeroPage(Hero("What you have installed", InstalledText(s), MissingText(s), "Play BO2 (LAN)", () => { LaunchGame("t6", "zm", true, false); return Task.CompletedTask; }));
+        cards.Controls.Add(Card("Quality of Life", "The mod itself, the HD texture pack, the custom sounds and the controller icons.", QolStatus(s), "Open", () => { ShowQol(); return Task.CompletedTask; }, true));
         var t6mods = service.GetInstalledMods("t6");
         cards.Controls.Add(Card("Installed mods", "Every mod installed for Black Ops II. Install another from a file, or remove one.", t6mods.Count == 1 ? "1 mod" : $"{t6mods.Count} mods", "Manage", () => { ShowMods("t6", "T6", "Black Ops II"); return Task.CompletedTask; }, false, ShowT6));
         cards.Controls.Add(Card("Play Zombies", "Normal online launch. The mod can be picked in Zombies -> Mods.", "online", "Play online", () => { LaunchGame("t6", "zm", false, false); return Task.CompletedTask; }, false, ShowT6));
         cards.Controls.Add(Card("Play Multiplayer", "Normal online launch of Black Ops II multiplayer.", "online", "Play online", () => { LaunchGame("t6", "mp", false, false); return Task.CompletedTask; }, false, ShowT6));
         cards.Controls.Add(Card("Play with ReShade", "LAN launch plus the ReShade watchdog. Closing that window stops it.", "LAN + watchdog", "Play", () => { LaunchGame("t6", "zm", true, true); return Task.CompletedTask; }, false, ShowT6));
+    }
+
+    /// <summary>What the Quality of Life mod installs, one page of its own.</summary>
+    private void ShowQol()
+    {
+        currentPage = ShowQol;
+        var s = service.GetStatus(); Clear("Quality of Life", "Black Ops II  •  the mod and its extras"); Select("Black Ops II (T6)"); footer.Text = PageFooter(s);
+        var cards = HeroPage(Hero("What you have installed", InstalledText(s), MissingText(s), "Install everything", InstallEverything, ShowQol));
+        cards.Controls.Add(Card("The mod", "Installs or updates the five mod files. Saved menu settings stay in place.", s.Mod, "Install", InstallMod, true, ShowQol));
+        cards.Controls.Add(Card("HD texture pack", "Downloads the latest texture pack when it is not beside this app, with a backup of yours first.", s.Textures, "Install", () => InstallPack("images"), false, ShowQol));
+        cards.Controls.Add(Card("Custom sounds", "Downloads and installs the sound pack under Plutonium storage, with a backup of yours first.", s.Sounds, "Install", () => InstallPack("zone"), false, ShowQol));
+        cards.Controls.Add(Card("Controller icons", "Choose PlayStation 5, Nintendo Switch, or Xbox One prompts.", s.Controller, "Choose", () => { ShowController(); return Task.CompletedTask; }, false, ShowQol));
+        var saved = service.GetBackups().Count(b => b.Exists);
+        cards.Controls.Add(Card("Backups", "Your own textures and sounds, kept aside before an install replaces them.", saved == 0 ? "none yet" : saved == 1 ? "1 saved" : $"{saved} saved", "Open", () => { ShowBackups(); return Task.CompletedTask; }, false, ShowQol));
+        cards.Controls.Add(Card("Back to Black Ops II", "Playing, the mods folder and ReShade for this game.", "back", "Back", () => { ShowT6(); return Task.CompletedTask; }));
+    }
+
+    /// <summary>
+    /// The four pieces as one line, so the row on the game page says how far along the install is
+    /// without listing them. "installed" on its own is the only value StatusGood paints green, so
+    /// a part-finished install never reads as done.
+    /// </summary>
+    private static string QolStatus(InstallStatus s)
+    {
+        var done = 0;
+        if (s.Mod != "not installed") done++;
+        if (s.Textures == "installed") done++;
+        if (s.Sounds == "installed") done++;
+        if (s.Controller != "game defaults") done++;
+        return done == 0 ? "not installed" : done == 4 ? "installed" : $"{done} of 4 installed";
     }
 
     private void ShowReShade()
@@ -761,7 +797,7 @@ internal sealed class MainForm : Form
         var s = service.GetStatus(); Clear("Controller icons", "PlayStation 5, Nintendo Switch or Xbox One prompts"); Select("Black Ops II (T6)"); footer.Text = PageFooter(s); var cards = Cards();
         foreach (var item in new[] { ("PlayStation 5 (DualSense)", "ps5"), ("Nintendo Switch", "switch"), ("Xbox One", "xbox") })
             cards.Controls.Add(Card(item.Item1, "Swaps the on-screen button prompts. Picking another pack swaps it over cleanly.", s.Controller == item.Item2 ? "installed" : "not installed", "Install", () => service.InstallControllerAsync(item.Item2, Reporter()), s.Controller == item.Item2, () => ShowController()));
-        cards.Controls.Add(Card("Back to Black Ops II", "Returns to the mod screen. Nothing is changed.", "back", "Back", () => { ShowT6(); return Task.CompletedTask; }));
+        cards.Controls.Add(Card("Back to Quality of Life", "Returns to the mod screen. Nothing is changed.", "back", "Back", () => { ShowQol(); return Task.CompletedTask; }));
     }
 
     private void ShowSettings()
@@ -1370,7 +1406,8 @@ internal sealed class MainForm : Form
         options.Add(("Open the releases page", "open", false));
         options.Add(("Not now", "close", false));
         var choice = await Choose(result.Summary, options.ToArray());
-        if (choice == "mod") { await service.InstallUpdateAsync(Reporter()); await Tell("The mod update is installed. Your settings were kept."); ShowT6(); }
+        // Land on Quality of Life, not the game page: that is where the mod's own status is shown.
+        if (choice == "mod") { await service.InstallUpdateAsync(Reporter()); await Tell("The mod update is installed. Your settings were kept."); ShowQol(); }
         else if (choice == "app")
         {
             if (await Ask("The app will close, update itself, and open again.", "Update now", "Not now"))

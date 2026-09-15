@@ -35,6 +35,11 @@ holding them, or a whole `Plutonium\storage\<game>\mods\<name>` tree. All three 
 `InstallModFromFileAsync`. The third is what Octagonal Ascension ships, and mishandling it
 installed a folder called "pack" with no mod anywhere the game looks.
 
+**A game page is the game; a mod gets its own page.** `ShowT6` is Black Ops II - playing, the mods
+folder, ReShade. What the Quality of Life mod installs lives in `ShowQol` one level down, and
+`ShowController` sits under that. Putting the texture pack and the sound pack back on the game page
+makes them look like parts of the game rather than parts of one mod.
+
 **One app window per Plutonium folder.** `SingleInstance` holds a named mutex keyed on a hash of
 the resolved root; a second copy finds it taken and offers to bring the first window back through a
 named event. The key has to include the root or a `--root` test run fights whatever the user has

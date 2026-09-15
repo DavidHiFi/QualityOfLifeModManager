@@ -50,7 +50,14 @@ internal static class Payload
 internal static class Setup
 {
     internal const string AppName = "Quality of Life Series";
-    internal const string ExeName = "QualityOfLifeSeries.exe";
+    internal const string ExeName = "QualityOfLifeModManager.exe";
+
+    /// <summary>
+    /// What the exe was called up to v1.0.7, before the rename. An install made by one of those
+    /// builds still has this name on disk, so detection has to accept it or the app forgets it is
+    /// installed: the Uninstall card disappears and the shortcut toggles point at nothing.
+    /// </summary>
+    internal const string LegacyExeName = "QualityOfLifeSeries.exe";
     private const string ShortcutName = "Quality of Life Series.lnk";
     private const string Key = @"Software\Microsoft\Windows\CurrentVersion\Uninstall\QualityOfLifeSeries";
 
@@ -70,11 +77,23 @@ internal static class Setup
             {
                 using var key = Registry.CurrentUser.OpenSubKey(Key);
                 var at = key?.GetValue("InstallLocation") as string;
-                return at is { Length: > 0 } && File.Exists(Path.Combine(at, ExeName)) ? at : null;
+                if (at is not { Length: > 0 }) return null;
+                return File.Exists(Path.Combine(at, ExeName)) || File.Exists(Path.Combine(at, LegacyExeName)) ? at : null;
             }
             catch { return null; }
         }
     }
+
+    /// <summary>
+    /// The app's exe inside <paramref name="dir"/>, under whichever name is actually there. A
+    /// pre-v1.0.8 install still carries the old one, and a shortcut or an --uninstall launch
+    /// aimed at a file that is not on disk fails silently. Falls back to the current name so a
+    /// fresh install still gets the right target.
+    /// </summary>
+    internal static string InstalledExeAt(string dir) =>
+        !File.Exists(Path.Combine(dir, ExeName)) && File.Exists(Path.Combine(dir, LegacyExeName))
+            ? Path.Combine(dir, LegacyExeName)
+            : Path.Combine(dir, ExeName);
 
     internal static bool HasStartMenu => File.Exists(StartMenuLink);
     internal static bool HasDesktop => File.Exists(DesktopLink);
@@ -143,8 +162,8 @@ internal static class Setup
         finally { Marshal.FinalReleaseComObject(shell); }
     }
 
-    internal static void SetStartMenu(bool on) => SetShortcut(StartMenuLink, Path.Combine(InstalledAt ?? AppContext.BaseDirectory, ExeName), InstalledAt ?? AppContext.BaseDirectory, on);
-    internal static void SetDesktop(bool on) => SetShortcut(DesktopLink, Path.Combine(InstalledAt ?? AppContext.BaseDirectory, ExeName), InstalledAt ?? AppContext.BaseDirectory, on);
+    internal static void SetStartMenu(bool on) => SetShortcut(StartMenuLink, InstalledExeAt(InstalledAt ?? AppContext.BaseDirectory), InstalledAt ?? AppContext.BaseDirectory, on);
+    internal static void SetDesktop(bool on) => SetShortcut(DesktopLink, InstalledExeAt(InstalledAt ?? AppContext.BaseDirectory), InstalledAt ?? AppContext.BaseDirectory, on);
 
     /// <summary>
     /// Keeps the Apps &amp; features entry honest. A self-update replaces the exe in place and knows

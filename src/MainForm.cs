@@ -795,7 +795,7 @@ internal sealed class MainForm : Form
             page.Controls.Add(Card("Install on this PC", "Copies the app into your profile and adds it to the Start menu and Apps & features. You are running it portable right now.", "portable", "Install", () => { Process.Start(new ProcessStartInfo(Environment.ProcessPath!, "--setup") { UseShellExecute = true }); return Task.CompletedTask; }, false, ShowSettings));
         else
         {
-            page.Controls.Add(Card("Installed on this PC", $"The app lives in {installedAt}. Removing it leaves your mods in Plutonium untouched.", "installed", "Uninstall", () => { Process.Start(new ProcessStartInfo(Path.Combine(installedAt, Setup.ExeName), "--uninstall") { UseShellExecute = true }); return Task.CompletedTask; }, false, ShowSettings));
+            page.Controls.Add(Card("Installed on this PC", $"The app lives in {installedAt}. Removing it leaves your mods in Plutonium untouched.", "installed", "Uninstall", () => { Process.Start(new ProcessStartInfo(Setup.InstalledExeAt(installedAt), "--uninstall") { UseShellExecute = true }); return Task.CompletedTask; }, false, ShowSettings));
             page.Controls.Add(Card("Start menu entry", "An entry under a \"Quality of Life Series\" group.", Setup.HasStartMenu ? "on" : "off", Setup.HasStartMenu ? "Turn off" : "Turn on", () => { Setup.SetStartMenu(!Setup.HasStartMenu); return Task.CompletedTask; }, false, ShowSettings));
             page.Controls.Add(Card("Desktop shortcut", "A shortcut to this app on your desktop.", Setup.HasDesktop ? "on" : "off", Setup.HasDesktop ? "Turn off" : "Turn on", () => { Setup.SetDesktop(!Setup.HasDesktop); return Task.CompletedTask; }, false, ShowSettings));
         }

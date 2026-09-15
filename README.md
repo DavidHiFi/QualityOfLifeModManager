@@ -26,8 +26,8 @@ Install, update, launch and remove mods for World at War, Black Ops and Black Op
 
 | | |
 |---|---|
-| **[QualityOfLifeSeriesSetup.exe](../../releases/latest)** | Installs it like any other program, with a Start menu entry, a desktop shortcut and an entry in Apps & features. |
-| **[QualityOfLifeSeries-portable.zip](../../releases/latest)** | Unzip and run. Installs nothing, changes nothing. |
+| **[QualityOfLifeModManagerSetup.exe](../../releases/latest)** | Installs it like any other program, with a Start menu entry, a desktop shortcut and an entry in Apps & features. |
+| **[QualityOfLifeModManager-portable.zip](../../releases/latest)** | Unzip and run. Installs nothing, changes nothing. |
 
 Both are the same executable. It reads its own file name: called `…Setup.exe` it shows the installer, otherwise it opens the app. Nothing to download twice, and the two can't disagree about what the app does.
 

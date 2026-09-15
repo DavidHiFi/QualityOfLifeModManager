@@ -37,7 +37,7 @@ internal sealed class InstallerService
     internal const string LauncherShortcut = "Quality of Life Series Launcher.lnk";
     internal const string WatcherShortcut = "Plutonium ReShade Watcher.lnk";
     private const string Repo = "DavidHiFi/T6-QoL";
-    private const string ToolRepo = "DavidHiFi/QualityOfLifeSeries";
+    private const string ToolRepo = "DavidHiFi/QualityOfLifeModManager";
     internal const string ModRepoUrl = "https://github.com/" + Repo;
     internal const string ToolRepoUrl = "https://github.com/" + ToolRepo;
 
@@ -784,7 +784,12 @@ internal sealed class InstallerService
         progress.Report("Unpacking");
         var outDir = System.IO.Path.Combine(temp, "new");
         ZipFile.ExtractToDirectory(zip, outDir);
-        var exe = Directory.EnumerateFiles(outDir, "QualityOfLifeSeries.exe", SearchOption.AllDirectories).FirstOrDefault() ?? throw new InvalidOperationException("That download did not contain the app.");
+        // Accept either name. v1.0.7 and earlier shipped as QualityOfLifeSeries.exe; the repo and
+        // the exe were renamed to QualityOfLifeModManager at v1.0.8. Preferring the new name and
+        // falling back keeps this working whichever package a user is updating from.
+        var exe = Directory.EnumerateFiles(outDir, "QualityOfLifeModManager.exe", SearchOption.AllDirectories).FirstOrDefault()
+            ?? Directory.EnumerateFiles(outDir, "QualityOfLifeSeries.exe", SearchOption.AllDirectories).FirstOrDefault()
+            ?? throw new InvalidOperationException("That download did not contain the app.");
         var source = System.IO.Path.GetDirectoryName(exe)!;
         var appDir = AppContext.BaseDirectory.TrimEnd(System.IO.Path.DirectorySeparatorChar);
         var script = System.IO.Path.Combine(System.IO.Path.GetTempPath(), $"qol-self-update-{Guid.NewGuid():N}.cmd");
@@ -809,7 +814,7 @@ internal sealed class InstallerService
             ") else (",
             $"  echo {DateTime.Now:h:mm:ss tt}  app update applied>>\"{LogFile}\"",
             ")",
-            $"start \"\" \"{System.IO.Path.Combine(appDir, "QualityOfLifeSeries.exe")}\"",
+            $"start \"\" \"{System.IO.Path.Combine(appDir, System.IO.Path.GetFileName(exe))}\"",
             $"rmdir /s /q \"{temp}\"",
             "(goto) 2>nul & del \"%~f0\""
         ]));

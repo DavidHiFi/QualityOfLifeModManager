@@ -53,7 +53,7 @@ src/package.ps1 builds both release downloads into dist/
 
 ```powershell
 dotnet publish src/QolSeriesInstaller.csproj -c Release -r win-x64 --self-contained true
-pwsh src/package.ps1        # -> dist/QualityOfLifeSeriesSetup.exe and the portable zip
+pwsh src/package.ps1        # -> dist/QualityOfLifeModManagerSetup.exe and the portable zip
 ```
 
 Release with both files attached, tagged `vX.Y.Z` matching `<Version>` in the csproj. Users on an

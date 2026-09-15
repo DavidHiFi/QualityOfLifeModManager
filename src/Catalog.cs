@@ -20,7 +20,7 @@ internal sealed record CatalogMod(
 /// </summary>
 internal static class Catalog
 {
-    private const string Remote = "https://raw.githubusercontent.com/DavidHiFi/QualityOfLifeSeries/main/catalog.json";
+    private const string Remote = "https://raw.githubusercontent.com/DavidHiFi/QualityOfLifeModManager/main/catalog.json";
     private const string Resource = "catalog.json";
 
     internal static IReadOnlyList<CatalogMod> Bundled() => Parse(ReadBundled());

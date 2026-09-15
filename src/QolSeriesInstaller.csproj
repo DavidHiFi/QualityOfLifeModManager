@@ -12,7 +12,7 @@
     <AssemblyName>QualityOfLifeSeries</AssemblyName>
     <RootNamespace>QolSeriesInstaller</RootNamespace>
     <ApplicationIcon>..\payload\qol_installer.ico</ApplicationIcon>
-    <Version>2.16.7</Version>
+    <Version>1.0.0</Version>
     <PublishSingleFile>true</PublishSingleFile>
     <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
     <SelfContained>true</SelfContained>

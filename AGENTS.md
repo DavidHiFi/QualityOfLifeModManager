@@ -35,6 +35,13 @@ holding them, or a whole `Plutonium\storage\<game>\mods\<name>` tree. All three 
 `InstallModFromFileAsync`. The third is what Octagonal Ascension ships, and mishandling it
 installed a folder called "pack" with no mod anywhere the game looks.
 
+**One app window per Plutonium folder.** `SingleInstance` holds a named mutex keyed on a hash of
+the resolved root; a second copy finds it taken and offers to bring the first window back through a
+named event. The key has to include the root or a `--root` test run fights whatever the user has
+open. Minimising to the tray *hides* the window and leaves the process alive - that is the case
+that shipped two copies before, and any change here has to be checked against it, not just against
+a visible window.
+
 **Fonts are resolved, not assumed.** A machine-wide `FontSubstitutes` entry can redirect
 "Segoe UI" to something else - GDI honours it while GDI+ does not, so the family reports as Segoe
 UI while every label draws in the substitute. `Ui.ResolveFamily` picks one that survives the round
@@ -65,7 +72,7 @@ There is no unit test project; the app is verified by driving the real thing. Th
 outside this repository, in the working folder used to build it - ask the user for
 `modding-jobs\qol-portable-installer-001\verify\` if you need them. What they cover: update checks,
 settings persistence, install/uninstall round trip, self-update, browse-and-install, the real mods
-folders, scroll artifacts, and a visual sweep across themes.
+folders, scroll artifacts, the single-instance guard, and a visual sweep across themes.
 
 Three traps that cost real time, worth knowing before writing another one:
 
@@ -88,6 +95,7 @@ and every check then fails with an empty tag - that is the rate limit, not a reg
 --import-settings <file>   restore them; add --app-only to skip the mod's config
 --setup / --uninstall      the install and removal windows
 --root <path>              use a different Plutonium folder (use this for any testing)
+--allow-multiple           skip the "already open" question and start another copy
 ```
 
 Always test against `--root` pointing at a throwaway folder. The app writes to a real Plutonium

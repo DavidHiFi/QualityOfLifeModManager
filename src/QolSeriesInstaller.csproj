@@ -12,7 +12,7 @@
     <AssemblyName>QualityOfLifeModManager</AssemblyName>
     <RootNamespace>QolSeriesInstaller</RootNamespace>
     <ApplicationIcon>..\payload\qol_installer.ico</ApplicationIcon>
-    <Version>1.0.8</Version>
+    <Version>1.0.9</Version>
     <PublishSingleFile>true</PublishSingleFile>
     <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
     <SelfContained>true</SelfContained>

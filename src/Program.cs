@@ -54,6 +54,21 @@ internal static class Program
             return;
         }
 
+        // One app window per Plutonium folder. Minimising to the tray hides the window but leaves
+        // the process running, so clicking the shortcut again used to open a second copy with no
+        // warning. --allow-multiple skips the question, for scripted testing.
+        if (!Has(args, "--allow-multiple") && !SingleInstance.Acquire(service.Pluto))
+        {
+            using var already = new AlreadyRunningDialog();
+            Application.Run(already);
+            if (already.Result == AlreadyRunningDialog.Choice.UseExisting)
+            {
+                if (SingleInstance.SignalExisting(service.Pluto)) return;
+                // It exited while the question was on screen - take the instance ourselves.
+                SingleInstance.Acquire(service.Pluto);
+            }
+        }
+
         Application.Run(new MainForm(service));
     }
 

@@ -114,6 +114,7 @@ internal sealed class MainForm : Form
         ApplyTheme(CurrentTheme(settings), false);
         SetTray(settings.Tray, false);
         ShowHome();
+        SingleInstance.ListenForActivation(service.Pluto, this, RestoreFromTray);
         if (settings.AutoUpdate) _ = StartupCheckAsync();
     }
 
@@ -1409,7 +1410,15 @@ internal sealed class MainForm : Form
         icon.DoubleClick += (_, _) => RestoreFromTray();
         return icon;
     }
-    private void RestoreFromTray() { Show(); WindowState = FormWindowState.Normal; Activate(); }
+    // Also what a second copy of the app asks for, so it has to cope with the window being hidden
+    // in the tray, minimised on the taskbar, or open but buried behind something else.
+    private void RestoreFromTray()
+    {
+        Show();
+        if (WindowState == FormWindowState.Minimized) WindowState = FormWindowState.Normal;
+        Activate();
+        SetForegroundWindow(Handle);
+    }
     protected override void OnResize(EventArgs e)
     {
         base.OnResize(e);
@@ -1462,6 +1471,7 @@ internal sealed class MainForm : Form
     protected override void OnShown(EventArgs e) { base.OnShown(e); ApplyTitleBar(CurrentTheme(settings)); }
     [DllImport("dwmapi.dll")] private static extern int DwmSetWindowAttribute(IntPtr hwnd, int attribute, ref int value, int size);
     [DllImport("user32.dll")] private static extern bool SetWindowPos(IntPtr hwnd, IntPtr after, int x, int y, int cx, int cy, uint flags);
+    [DllImport("user32.dll")] private static extern bool SetForegroundWindow(IntPtr hwnd);
     [DllImport("uxtheme.dll", CharSet = CharSet.Unicode)] private static extern int SetWindowTheme(IntPtr hwnd, string? subApp, string? subId);
 
     private sealed class Row : RoundedPanel

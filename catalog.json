@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "updated": "2026-09-15",
+  "updated": "2026-09-16",
   "note": "Community mods the app can browse. A copy of this ships inside the exe; the app refreshes it from this file on GitHub, so mods can be added here without releasing a new build.",
   "mods": [
     {
@@ -8,7 +8,7 @@
       "name": "Quality of Life",
       "game": "t6",
       "author": "DavidHiFi",
-      "version": "2.15.51",
+      "version": "2.16.14",
       "size": "326 MB",
       "summary": "Quality of life changes for Black Ops II Zombies - menus, HUD, weapons and fixes, all toggleable in game.",
       "image": "https://github.com/user-attachments/assets/32a1cfbd-7ece-4a91-9690-82691bed24b1",

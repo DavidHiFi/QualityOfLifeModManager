@@ -11,12 +11,13 @@
   Play rows, which pass the game, mode and name.
 
   WHY LAN MODE FOR THE MOD: an asset mod (mod.ff/mod.iwd) can only be
-  auto-loaded with the engine's fs_game mechanism, and Plutonium's
-  bootstrapper refuses fs_game on a normal online launch (it has no login
-  session of its own - that is a 401, not a bug in this script). LAN mode
-  sidesteps the login entirely, so fs_game works and the mod is already
-  running the moment Zombies loads. Online launches therefore start with no
-  mod; pick Quality Of Life from Zombies -> Mods if you want it there.
+  auto-loaded with the engine's fs_game mechanism, and the bootstrapper started
+  directly has no Plutonium login - an ONLINE boot needs that login and answers
+  "Could not authenticate to Plutonium (401)" without it. LAN mode needs no
+  login, so fs_game works and the mod is already running the moment Zombies
+  loads. Online launches therefore go through the launcher's own authenticated
+  route (plutonium://play/<game>); pick Quality Of Life from Zombies -> Mods
+  if you want it there.
 
   THE GAME PATH IS READ FROM PLUTONIUM'S OWN CONFIG, NOT HARDCODED.
   %LOCALAPPDATA%\Plutonium\config.json is a file Plutonium itself writes and
@@ -43,7 +44,11 @@ param(
     [switch] $Online,
     # Also start the ReShade watchdog (reshade-watchdog.ps1, same folder) in
     # its own window alongside the game.
-    [switch] $Watchdog
+    [switch] $Watchdog,
+    # Run with no prompts: print the reason and exit non-zero on failure
+    # instead of waiting for Enter. The mod manager runs it this way and shows
+    # the message itself; the .bat files leave it off so the window stays open.
+    [switch] $Quiet
 )
 
 $ErrorActionPreference = 'Stop'
@@ -54,7 +59,7 @@ function Fail {
     Write-Host ''
     Write-Host "  $Message" -ForegroundColor Red
     Write-Host ''
-    Read-Host 'Press Enter to close'
+    if (-not $Quiet) { Read-Host 'Press Enter to close' }
     exit 1
 }
 
@@ -62,7 +67,17 @@ $Names = @{ t4 = 'World at War'; t5 = 'Black Ops'; t6 = 'Black Ops II' }
 $Modes = @{ zm = 'Zombies'; mp = 'Multiplayer' }
 $GameName = $Names[$Game]
 $ModeName = $Modes[$Play]
-$GameId   = "$Game$Play"
+
+# Every Plutonium game slot has its own process name, and Zombies on T4/T5 is
+# the single-player exe (t4sp/t5sp). The old "$Game$Play" id built t4zm and
+# t5zm, which no Plutonium game ever uses: the bootstrapper printed its usage
+# line and quit, which is why the window "flashed" and no game appeared.
+$Ids = @{
+    t6 = @{ zm = 't6zm'; mp = 't6mp' }
+    t5 = @{ zm = 't5sp'; mp = 't5mp' }
+    t4 = @{ zm = 't4sp'; mp = 't4mp' }
+}
+$GameId = $Ids[$Game][$Play]
 
 $BinDir = Join-Path $PlutoRoot 'bin'
 $Boot   = Join-Path $BinDir 'plutonium-bootstrapper-win32.exe'
@@ -88,7 +103,7 @@ if (-not $GamePath -or -not (Test-Path -LiteralPath $GamePath)) {
 }
 
 # Already running? Don't fight a second instance over the same game slot.
-$already = @('plutonium-bootstrapper-win32', $GameId, "${Game}sp") |
+$already = @('plutonium-bootstrapper-win32', $GameId) |
     ForEach-Object { Get-Process -Name $_ -ErrorAction SilentlyContinue } |
     Select-Object -First 1
 if ($already) {
@@ -104,18 +119,46 @@ if (-not $Online) {
     }
 }
 
-Write-Host ''
+#  An ONLINE launch needs a Plutonium login session. The bootstrapper started
+#  directly has none: Plutonium itself reports "Could not authenticate to
+#  Plutonium (401)" and closes. LAN needs no login. So online play must go
+#  through the launcher's own authenticated route - the plutonium://play/<id>
+#  protocol handler, the same one its forum staff give out for direct launches
+#  (forum topic 41447). A fresh launcher session does the login; no token is
+#  read, stored or replayed here.
 if ($Online) {
-    Write-Host "  Starting $GameName $ModeName through Plutonium as '$InGameName'..." -ForegroundColor Cyan
-    if ($Game -eq 't6') {
-        Write-Host '  Online session. Pick Quality Of Life in Zombies -> Mods if you want the mod loaded.' -ForegroundColor Yellow
+    Write-Host ''
+    Write-Host "  Starting $GameName $ModeName through Plutonium's launcher..." -ForegroundColor Cyan
+    Write-Host '  A launcher window handles the online login, then the game opens.' -ForegroundColor Yellow
+    Write-Host ''
+    try {
+        Start-Process -FilePath "plutonium://play/$GameId" -WorkingDirectory $PlutoRoot -ErrorAction Stop | Out-Null
+    } catch {
+        Fail "Couldn't hand the game to Plutonium: $($_.Exception.Message)"
     }
-} else {
+    if ($Watchdog) {
+        $watchdogPS1 = Join-Path $ScriptDir 'reshade-watchdog.ps1'
+        if (Test-Path -LiteralPath $watchdogPS1) {
+            Start-Process -FilePath 'powershell.exe' `
+                -ArgumentList @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', "`"$watchdogPS1`"") `
+                -WorkingDirectory $PlutoRoot -WindowStyle Normal | Out-Null
+            Write-Host '  ReShade watchdog started in its own window - leave it open while you play.' -ForegroundColor Green
+        } else {
+            Write-Host '  reshade-watchdog.ps1 is missing from this folder - ReShade will not be restored.' -ForegroundColor Yellow
+        }
+    }
+    Write-Host '  Game launching - this window can be closed.' -ForegroundColor Green
+    Start-Sleep -Seconds 3
+    exit 0
+}
+
+Write-Host ''
+if (-not $Online) {
     Write-Host "  Starting $GameName $ModeName in LAN mode as '$InGameName'" -NoNewline -ForegroundColor Cyan
     if ($Game -eq 't6') { Write-Host " with '$Mod' loaded..." -ForegroundColor Cyan } else { Write-Host '...' -ForegroundColor Cyan }
     Write-Host '  Offline only this session - no online servers or stats.' -ForegroundColor Yellow
+    Write-Host ''
 }
-Write-Host ''
 
 try {
     Start-Process -FilePath $Boot -ArgumentList $gameArgs -WorkingDirectory $PlutoRoot -ErrorAction Stop | Out-Null

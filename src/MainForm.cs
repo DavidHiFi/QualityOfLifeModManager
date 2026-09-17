@@ -462,6 +462,8 @@ internal sealed class MainForm : Form
         Tip(row.Status, status);
         return row;
     }
+    private Row Card(string title, string description, string status, string button, Action action, bool primary = false, Action? refresh = null) =>
+        Card(title, description, status, button, () => { action(); return Task.CompletedTask; }, primary, refresh);
     private Label Caption(string text) => new() { AutoSize = false, Height = 28, Text = text, Font = F(8), ForeColor = Overlay0, Margin = new Padding(0, 10, 0, 0), Padding = new Padding(2, 0, 0, 4), TextAlign = ContentAlignment.BottomLeft, BackColor = Base, UseMnemonic = false };
     private async Task Run(Func<Task> action, Control source, Action? refresh = null)
     {
@@ -615,15 +617,9 @@ internal sealed class MainForm : Form
     {
         currentPage = ShowT6;
         var s = service.GetStatus(); Clear("Black Ops II", "Plutonium T6  •  Zombies and Multiplayer"); Select("Black Ops II (T6)"); footer.Text = PageFooter(s);
-        // The hero's title is not the page title again: the page heading already says Black Ops II,
-        // and this card is the install summary.
-        var cards = HeroPage(Hero("What you have installed", InstalledText(s), MissingText(s), "Play BO2 (LAN)", () => { LaunchGame("t6", "zm", true, false); return Task.CompletedTask; }));
-        cards.Controls.Add(Card("Quality of Life", "The mod itself, the HD texture pack, the custom sounds and the controller icons.", QolStatus(s), "Open", () => { ShowQol(); return Task.CompletedTask; }, true));
-        var t6mods = service.GetInstalledMods("t6");
-        cards.Controls.Add(Card("Installed mods", "Every mod installed for Black Ops II. Install another from a file, or remove one.", t6mods.Count == 1 ? "1 mod" : $"{t6mods.Count} mods", "Manage", () => { ShowMods("t6", "T6", "Black Ops II"); return Task.CompletedTask; }, false, ShowT6));
-        cards.Controls.Add(Card("Play Zombies", "Normal online launch. The mod can be picked in Zombies -> Mods.", "online", "Play online", () => { LaunchGame("t6", "zm", false, false); return Task.CompletedTask; }, false, ShowT6));
-        cards.Controls.Add(Card("Play Multiplayer", "Normal online launch of Black Ops II multiplayer.", "online", "Play online", () => { LaunchGame("t6", "mp", false, false); return Task.CompletedTask; }, false, ShowT6));
-        cards.Controls.Add(Card("Play with ReShade", "LAN launch plus the ReShade watchdog. Closing that window stops it.", "LAN + watchdog", "Play", () => { LaunchGame("t6", "zm", true, true); return Task.CompletedTask; }, false, ShowT6));
+        var cards = Cards();
+        cards.Controls.Add(Card("Quality of Life", "Manage the mod, HD textures, custom sounds and controller icons.", QolStatus(s), "Open", () => { ShowQol(); return Task.CompletedTask; }));
+        AddGameActions(cards, "t6", "T6", "Black Ops II");
     }
 
     /// <summary>What the Quality of Life mod installs, one page of its own.</summary>
@@ -1209,13 +1205,29 @@ internal sealed class MainForm : Form
         currentPage = () => ShowGame(game, system, name);
         var s = service.GetStatus(); Clear(name, $"Plutonium {system}  •  Multiplayer and Zombies"); Select($"{name} ({system})"); footer.Text = PageFooter(s);
         var cards = Cards();
-        cards.Controls.Add(Card("Play Zombies", "Normal online launch through Plutonium.", "online", "Play online", () => { LaunchGame(game, "zm", false, false); return Task.CompletedTask; }, true));
-        cards.Controls.Add(Card("Play Zombies (LAN)", "LAN mode - offline this session, no online servers or stats.", "LAN", "Play LAN", () => { LaunchGame(game, "zm", true, false); return Task.CompletedTask; }, false));
-        cards.Controls.Add(Card("Play Multiplayer", "Normal online launch through Plutonium.", "online", "Play online", () => { LaunchGame(game, "mp", false, false); return Task.CompletedTask; }, false));
-        cards.Controls.Add(Card("Play Multiplayer (LAN)", "LAN mode - offline this session, no online servers or stats.", "LAN", "Play LAN", () => { LaunchGame(game, "mp", true, false); return Task.CompletedTask; }, false));
-        var installed = service.GetInstalledMods(game);
-        cards.Controls.Add(Card("Installed mods", "See what is installed for this game, install another from a file, or remove one.", installed.Count == 1 ? "1 mod" : $"{installed.Count} mods", "Manage", () => { ShowMods(game, system, name); return Task.CompletedTask; }, false, () => ShowGame(game, system, name)));
-        cards.Controls.Add(Card("No Quality of Life mod yet", $"There is no Quality of Life mod for {name} yet - Black Ops II is the current focus. Its home will be github.com/DavidHiFi/{system}-QoL.", "no mod yet", "Back", () => { ShowHome(); return Task.CompletedTask; }));
+        cards.Controls.Add(Card("Quality of Life", $"The Quality of Life mod for {name} is not available yet.", "not available", "Details", () => Tell($"Quality of Life for {name} has not been released.\n\nYou can still launch the game and manage other installed mods.")));
+        AddGameActions(cards, game, system, name);
+    }
+
+    private void AddGameActions(FlowLayoutPanel cards, string game, string system, string name)
+    {
+        foreach (var (mode, label) in new[] { ("zm", "Zombies"), ("mp", "Multiplayer") })
+            cards.Controls.Add(Card(label, "Choose LAN or online play, with optional ReShade.", "launch options", "Open", () => { ShowLaunchOptions(game, system, name, mode, label); return Task.CompletedTask; }));
+        var count = service.CountMods(game);
+        cards.Controls.Add(Card("Installed mods", "View installed mods, add a mod from a file, or remove one.", count == 1 ? "1 mod" : $"{count} mods", "Manage", () => { ShowMods(game, system, name); return Task.CompletedTask; }));
+    }
+
+    private void ShowLaunchOptions(string game, string system, string name, string mode, string label)
+    {
+        currentPage = () => ShowLaunchOptions(game, system, name, mode, label);
+        Clear(label, $"{name}  •  Choose how to play"); Select($"{name} ({system})");
+        footer.Text = PageFooter(service.GetStatus());
+        var cards = Cards();
+        cards.Controls.Add(Card("LAN", "Play locally without online servers or online stats.", "offline", "Play", () => LaunchGame(game, mode, true, false)));
+        cards.Controls.Add(Card("Online", "Play through Plutonium with an authenticated online session.", "online", "Play", () => LaunchGame(game, mode, false, false)));
+        cards.Controls.Add(Card("LAN with ReShade", "Play locally with the ReShade watcher running alongside the game.", "offline + ReShade", "Play", () => LaunchGame(game, mode, true, true)));
+        cards.Controls.Add(Card("Online with ReShade", "Play online with the ReShade watcher running alongside the game.", "online + ReShade", "Play", () => LaunchGame(game, mode, false, true)));
+        cards.Controls.Add(Card($"Back to {name}", "Quality of Life, game modes and installed mods.", "back", "Back", () => { if (game == "t6") ShowT6(); else ShowGame(game, system, name); return Task.CompletedTask; }));
     }
 
     private void ShowMods(string game, string system, string gameName)
@@ -1332,17 +1344,32 @@ internal sealed class MainForm : Form
         await service.InstallModFromFileAsync(game, pick.FileName, Reporter());
     }
 
-    private void LaunchGame(string game, string play, bool lan, bool watchdog)
+    private async Task LaunchGame(string game, string play, bool lan, bool watchdog)
     {
         var script = Path.Combine(service.Payload, "lan-launch.ps1");
-        if (!File.Exists(script)) throw new FileNotFoundException("lan-launch.ps1 is missing from this package - reinstall from the full download.");
-        var args = $"-NoProfile -ExecutionPolicy Bypass -File \"{script}\" -Game {game} -Play {play}";
-        if (settings.PlayerName.Trim().Length > 0) args += $" -LanName \"{settings.PlayerName.Trim()}\"";
-        if (!lan) args += " -Online";
-        if (watchdog) args += " -Watchdog";
-        Process.Start(new ProcessStartInfo("powershell.exe", args) { UseShellExecute = true, WorkingDirectory = service.Payload, WindowStyle = ProcessWindowStyle.Normal });
-        service.Log($"launch: {game} {play} lan={lan} watchdog={watchdog} name={(settings.PlayerName.Trim().Length > 0 ? settings.PlayerName.Trim() : "Player")}");
-        footer.Text = lan ? "Starting in LAN mode - a console window shows progress." : "Starting through Plutonium - a console window shows progress.";
+        if (!File.Exists(script)) throw new FileNotFoundException("The launch script is missing. Reinstall the mod manager.");
+        var start = new ProcessStartInfo("powershell.exe")
+        {
+            UseShellExecute = false, CreateNoWindow = true, WorkingDirectory = service.Payload,
+            RedirectStandardOutput = true, RedirectStandardError = true
+        };
+        foreach (var arg in new[] { "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", script, "-PlutoRoot", service.Pluto, "-Game", game, "-Play", play })
+            start.ArgumentList.Add(arg);
+        if (settings.PlayerName.Trim().Length > 0) { start.ArgumentList.Add("-LanName"); start.ArgumentList.Add(settings.PlayerName.Trim()); }
+        if (!lan) start.ArgumentList.Add("-Online");
+        if (watchdog) start.ArgumentList.Add("-Watchdog");
+        start.ArgumentList.Add("-Quiet");
+        footer.Text = "Starting the game...";
+        using var process = Process.Start(start) ?? throw new InvalidOperationException("The launch helper could not start.");
+        var output = process.StandardOutput.ReadToEndAsync();
+        var error = process.StandardError.ReadToEndAsync();
+        await process.WaitForExitAsync();
+        var message = (await output).Trim();
+        var failure = (await error).Trim();
+        service.Log($"launch: {game} {play} lan={lan} watchdog={watchdog} exit={process.ExitCode}");
+        if (process.ExitCode != 0)
+            throw new InvalidOperationException(message.Length > 0 ? message : failure.Length > 0 ? failure : "The game could not start. Check its installation and launch settings.");
+        footer.Text = lan ? "Game is launching in LAN mode." : "Game is launching online - the launcher handles login.";
     }
 
     private void ShowEmptyGame(string game, string system)

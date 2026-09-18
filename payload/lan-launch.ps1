@@ -63,6 +63,24 @@ function Fail {
     exit 1
 }
 
+# Proves Plutonium took the handoff: the $already check above guarantees no
+# game process existed before us, so any Plutonium window now is ours. The
+# first window belongs to the bootstrapper ("Plutonium T6 Zombies (r5346)");
+# the game itself can take minutes on a cold boot, so this waits for the
+# handoff, not the menu. Without it a dead handler looks like success and
+# the app has nothing to report.
+function Confirm-Window {
+    for ($i = 0; $i -lt 12; $i++) {
+        $win = @('plutonium-bootstrapper-win32', 'plutonium-launcher-win32', 't4sp', 't4mp', 't5sp', 't5mp', 't6zm', 't6mp') |
+            ForEach-Object { Get-Process -Name $_ -ErrorAction SilentlyContinue } |
+            Where-Object { $_.MainWindowTitle -like 'Plutonium*' } |
+            Select-Object -First 1
+        if ($win) { return $win.MainWindowTitle }
+        Start-Sleep -Seconds 5
+    }
+    return $null
+}
+
 $Names = @{ t4 = 'World at War'; t5 = 'Black Ops'; t6 = 'Black Ops II' }
 $Modes = @{ zm = 'Zombies'; mp = 'Multiplayer' }
 $GameName = $Names[$Game]
@@ -151,6 +169,10 @@ if ($Online) {
             Write-Host '  reshade-watchdog.ps1 is missing from this folder - ReShade will not be restored.' -ForegroundColor Yellow
         }
     }
+    $window = Confirm-Window
+    if (-not $window) {
+        Fail 'Plutonium did not open within a minute. If the launcher asked you to log in, finish that, then try again.'
+    }
     Write-Host '  Game launching - this window can be closed.' -ForegroundColor Green
     Start-Sleep -Seconds 3
     exit 0
@@ -168,6 +190,11 @@ try {
     Start-Process -FilePath $Boot -ArgumentList $gameArgs -WorkingDirectory $PlutoRoot -ErrorAction Stop | Out-Null
 } catch {
     Fail "Couldn't start the game: $($_.Exception.Message)"
+}
+
+$window = Confirm-Window
+if (-not $window) {
+    Fail 'Plutonium did not open within a minute. Check its installation and launch settings, then try again.'
 }
 
 if ($Watchdog) {

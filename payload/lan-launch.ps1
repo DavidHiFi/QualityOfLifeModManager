@@ -103,7 +103,7 @@ if (-not $GamePath -or -not (Test-Path -LiteralPath $GamePath)) {
 }
 
 # Already running? Don't fight a second instance over the same game slot.
-$already = @('plutonium-bootstrapper-win32', $GameId) |
+$already = @('plutonium-bootstrapper-win32', 't4sp', 't4mp', 't5sp', 't5mp', 't6zm', 't6mp', 'iw5mp') |
     ForEach-Object { Get-Process -Name $_ -ErrorAction SilentlyContinue } |
     Select-Object -First 1
 if ($already) {
@@ -114,7 +114,7 @@ $InGameName = if ($LanName -and $LanName.Trim().Length -gt 0) { $LanName.Trim() 
 $gameArgs = @($GameId, ('"' + $GamePath.TrimEnd('\') + '"'), '+name', ('"' + $InGameName + '"'))
 if (-not $Online) {
     $gameArgs += '-lan'
-    if ($Game -eq 't6') {
+    if ($Game -eq 't6' -and $Play -eq 'zm') {
         $gameArgs += @('+set', 'fs_game', ('"mods/' + $Mod + '"'))
     }
 }
@@ -127,6 +127,10 @@ if (-not $Online) {
 #  (forum topic 41447). A fresh launcher session does the login; no token is
 #  read, stored or replayed here.
 if ($Online) {
+    $DefaultRoot = Join-Path $env:LOCALAPPDATA 'Plutonium'
+    if ([IO.Path]::GetFullPath($PlutoRoot).TrimEnd('\') -ne [IO.Path]::GetFullPath($DefaultRoot).TrimEnd('\')) {
+        Fail 'Online launch is disabled for an alternate Plutonium root. It would use the registered installation instead.'
+    }
     Write-Host ''
     Write-Host "  Starting $GameName $ModeName through Plutonium's launcher..." -ForegroundColor Cyan
     Write-Host '  A launcher window handles the online login, then the game opens.' -ForegroundColor Yellow
@@ -140,7 +144,7 @@ if ($Online) {
         $watchdogPS1 = Join-Path $ScriptDir 'reshade-watchdog.ps1'
         if (Test-Path -LiteralPath $watchdogPS1) {
             Start-Process -FilePath 'powershell.exe' `
-                -ArgumentList @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', "`"$watchdogPS1`"") `
+                -ArgumentList @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', "`"$watchdogPS1`"", '-PlutoRoot', "`"$PlutoRoot`"") `
                 -WorkingDirectory $PlutoRoot -WindowStyle Normal | Out-Null
             Write-Host '  ReShade watchdog started in its own window - leave it open while you play.' -ForegroundColor Green
         } else {
@@ -155,7 +159,7 @@ if ($Online) {
 Write-Host ''
 if (-not $Online) {
     Write-Host "  Starting $GameName $ModeName in LAN mode as '$InGameName'" -NoNewline -ForegroundColor Cyan
-    if ($Game -eq 't6') { Write-Host " with '$Mod' loaded..." -ForegroundColor Cyan } else { Write-Host '...' -ForegroundColor Cyan }
+    if ($Game -eq 't6' -and $Play -eq 'zm') { Write-Host " with '$Mod' loaded..." -ForegroundColor Cyan } else { Write-Host '...' -ForegroundColor Cyan }
     Write-Host '  Offline only this session - no online servers or stats.' -ForegroundColor Yellow
     Write-Host ''
 }
@@ -170,7 +174,7 @@ if ($Watchdog) {
     $watchdogPS1 = Join-Path $ScriptDir 'reshade-watchdog.ps1'
     if (Test-Path -LiteralPath $watchdogPS1) {
         Start-Process -FilePath 'powershell.exe' `
-            -ArgumentList @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', "`"$watchdogPS1`"") `
+            -ArgumentList @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', "`"$watchdogPS1`"", '-PlutoRoot', "`"$PlutoRoot`"") `
             -WorkingDirectory $PlutoRoot -WindowStyle Normal | Out-Null
         Write-Host '  ReShade watchdog started in its own window - leave it open while you play.' -ForegroundColor Green
     } else {

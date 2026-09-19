@@ -28,6 +28,7 @@ public:
 
 signals:
     void catalogChanged();
+    void selectionChanged();
 
 private slots:
     void onGameSelected(const QString &gameName);

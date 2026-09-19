@@ -31,6 +31,8 @@
 #include <QMouseEvent>
 #include <QPainter>
 #include <QPainterPath>
+#include <QCloseEvent>
+#include <QDir>
 #include <QResizeEvent>
 #include <QtConcurrent/QtConcurrent>
 
@@ -169,6 +171,9 @@ MainWindow::MainWindow(QWidget *parent)
             m_homePage->refreshInstallState();
     });
     connect(m_playPage, &PlayPage::stopRequested, this, &MainWindow::onStopGame);
+    connect(m_modsPage, &ModsPage::selectionChanged, this, [this]() {
+        m_playPage->setSelectedMod(m_modsPage->selectedMod());
+    });
     connect(m_modsPage, &ModsPage::catalogChanged, this, [this]() {
         if (m_homePage)
             m_homePage->refreshInstallState();
@@ -197,6 +202,8 @@ MainWindow::MainWindow(QWidget *parent)
     connect(m_serverPage, &ServerPage::stopServerRequested, this, &MainWindow::onStopServer);
     connect(&m_processPollTimer, &QTimer::timeout, this, &MainWindow::onPollRunningProcess);
     m_processPollTimer.setInterval(2000);
+    connect(&m_onlineAdoptTimer, &QTimer::timeout, this, &MainWindow::onAdoptOnlineGame);
+    m_onlineAdoptTimer.setInterval(1000);
 
     applyHomeVisibility();
     if (m_settings.homeEnabled)
@@ -490,6 +497,8 @@ void MainWindow::selectGame(int gameIndex)
     const QString id = (gameIndex >= 0 && gameIndex < m_gameButtons.size())
                            ? m_gameButtons[gameIndex]->property("gameId").toString()
                            : GameCatalog::all().at(0).id;
+    m_modsPage->selectGame(id);
+    m_playPage->setSelectedMod(m_modsPage->selectedMod());
     m_playPage->setGame(id);
     m_playPage->setRunning(m_runningPid > 0 && m_runningGameId == id);
     m_stack->setCurrentWidget(m_playPage);
@@ -606,13 +615,39 @@ void MainWindow::onLaunchOnline(const QString &gameId, const QString &mode)
         if (!GameLauncher::startReShadeWatchdog(m_settings.plutoniumInstance, err))
             Dialogs::error(this, err);
     }
-    // The launcher owns the process from here; there is no pid to poll.
+    // The launcher owns the process from here. Adopt it once the bootstrapper
+    // appears under the Plutonium folder so Stop and the running state work.
+    m_runningGameId = gameId;
+    m_onlineAdoptTries = 0;
+    m_onlineAdoptTimer.start();
+}
+
+void MainWindow::onAdoptOnlineGame()
+{
+    // The launcher exe lives in the same bin folder and stays open; the game is
+    // the bootstrapper, so match on its name.
+    const qint64 live = GameLauncher::findProcessByName(QStringLiteral("plutonium-bootstrapper-win32.exe"));
+    if (live > 0) {
+        m_onlineAdoptTimer.stop();
+        m_runningPid = live;
+        m_playPage->setRunning(true);
+        m_processPollTimer.start();
+        return;
+    }
+    if (++m_onlineAdoptTries > 120) { // two minutes: the launcher was closed or login failed
+        m_onlineAdoptTimer.stop();
+        m_runningGameId.clear();
+    }
 }
 
 void MainWindow::onStopGame(const QString &)
 {
-    if (m_runningPid > 0)
-        GameLauncher::terminatePid(m_runningPid);
+    if (m_runningPid > 0) {
+        // terminatePid waits for a clean quit before forcing; keep the UI alive.
+        const qint64 pid = m_runningPid;
+        auto f = QtConcurrent::run([pid]() { GameLauncher::terminatePid(pid); });
+        Q_UNUSED(f);
+    }
     if (m_runningGameId == QLatin1String("Black ops III"))
         GameLauncher::terminateFolderProcesses(m_settings.bo3);
     m_runningPid = 0;
@@ -774,6 +809,13 @@ void MainWindow::setOrganizeGames(bool on)
         m_organizeHint->raise();
         updateOrganizeOverlay();
     }
+}
+
+void MainWindow::closeEvent(QCloseEvent *event)
+{
+    // The watchdog window is ours; do not leave it behind when the app closes.
+    GameLauncher::stopReShadeWatchdog();
+    QMainWindow::closeEvent(event);
 }
 
 void MainWindow::resizeEvent(QResizeEvent *event)

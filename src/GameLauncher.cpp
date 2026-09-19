@@ -277,6 +277,21 @@ bool reShadeInstalled(const QString &plutoniumRoot)
     return QFileInfo::exists(QDir(plutoniumRoot).filePath(QStringLiteral("bin/dxgi.dll")));
 }
 
+qint64 g_watchdogPid = 0;
+
+qint64 runningReShadeWatchdog()
+{
+    return (g_watchdogPid > 0 && isPidRunning(g_watchdogPid)) ? g_watchdogPid : 0;
+}
+
+void stopReShadeWatchdog()
+{
+    if (g_watchdogPid > 0 && isPidRunning(g_watchdogPid))
+        QProcess::execute(QStringLiteral("taskkill"), {QStringLiteral("/PID"), QString::number(g_watchdogPid),
+                                                        QStringLiteral("/T"), QStringLiteral("/F")});
+    g_watchdogPid = 0;
+}
+
 qint64 startReShadeWatchdog(const QString &plutoniumRoot, QString &error)
 {
 #ifndef Q_OS_WIN
@@ -284,6 +299,9 @@ qint64 startReShadeWatchdog(const QString &plutoniumRoot, QString &error)
     error = QObject::tr("ReShade is Windows only.");
     return 0;
 #else
+    // One watchdog per app session is enough; it watches every launch.
+    if (const qint64 live = runningReShadeWatchdog())
+        return live;
     QString script;
     if (!unpackTool(QStringLiteral("reshade-watchdog.ps1"), script, error))
         return 0;
@@ -297,6 +315,7 @@ qint64 startReShadeWatchdog(const QString &plutoniumRoot, QString &error)
         error = QObject::tr("Could not start PowerShell for the ReShade watchdog.");
         return 0;
     }
+    g_watchdogPid = pid;
     return pid;
 #endif
 }
@@ -381,6 +400,33 @@ bool terminatePid(qint64 pid)
         g_errorWatchPid.store(0);
 #endif
 #ifdef Q_OS_WIN
+    // Ask the game to close first: WM_CLOSE on its top-level windows lets the
+    // engine quit cleanly (saves settings, releases the shared bin folder for
+    // any other Plutonium session). Force only if it is still alive afterwards.
+    struct Ctx { DWORD pid; bool sent; };
+    Ctx ctx{static_cast<DWORD>(pid), false};
+    EnumWindows([](HWND hwnd, LPARAM lp) -> BOOL {
+        auto *c = reinterpret_cast<Ctx *>(lp);
+        DWORD wp = 0;
+        GetWindowThreadProcessId(hwnd, &wp);
+        if (wp == c->pid && GetWindow(hwnd, GW_OWNER) == nullptr) {
+            wchar_t title[64] = {};
+            GetWindowTextW(hwnd, title, 64);
+            // Only the game's own window; the engine also owns a console window
+            // whose WM_CLOSE is ignored.
+            if (wcsncmp(title, L"Plutonium", 9) == 0) {
+                PostMessageW(hwnd, WM_CLOSE, 0, 0);
+                c->sent = true;
+            }
+        }
+        return TRUE;
+    }, reinterpret_cast<LPARAM>(&ctx));
+    if (ctx.sent) {
+        for (int i = 0; i < 80 && isPidRunning(pid); ++i)
+            QThread::msleep(250);
+    }
+    if (!isPidRunning(pid))
+        return true;
     return QProcess::startDetached("taskkill", {"/PID", QString::number(pid), "/T", "/F"});
 #else
     return ::kill(static_cast<pid_t>(pid), SIGTERM) == 0 || errno == ESRCH;
@@ -505,6 +551,31 @@ qint64 findProcessInFolder(const QString &folder)
     return found;
 #else
     Q_UNUSED(folder);
+    return 0;
+#endif
+}
+
+qint64 findProcessByName(const QString &exeName)
+{
+#ifdef Q_OS_WIN
+    HANDLE snap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+    if (snap == INVALID_HANDLE_VALUE)
+        return 0;
+    PROCESSENTRY32W pe;
+    pe.dwSize = sizeof(pe);
+    qint64 found = 0;
+    if (Process32FirstW(snap, &pe)) {
+        do {
+            if (exeName.compare(QString::fromWCharArray(pe.szExeFile), Qt::CaseInsensitive) == 0) {
+                found = static_cast<qint64>(pe.th32ProcessID);
+                break;
+            }
+        } while (Process32NextW(snap, &pe));
+    }
+    CloseHandle(snap);
+    return found;
+#else
+    Q_UNUSED(exeName);
     return 0;
 #endif
 }

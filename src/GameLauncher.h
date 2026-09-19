@@ -30,6 +30,8 @@ namespace GameLauncher
     // ReShade watchdog: ships in the exe, unpacked next to it under tools\.
     // Returns the pid of the PowerShell window, or 0 with an error.
     qint64 startReShadeWatchdog(const QString &plutoniumRoot, QString &error);
+    qint64 runningReShadeWatchdog();   // pid of the one this app started, or 0
+    void stopReShadeWatchdog();        // called when the app closes
     bool reShadeInstalled(const QString &plutoniumRoot);
     Result launchServer(AppSettings &settings, const QString &modSelection,
                          const QString &configSelection, const QString &port);
@@ -37,5 +39,6 @@ namespace GameLauncher
     bool isPidRunning(qint64 pid);
     void startErrorDialogWatch(qint64 pid);
     qint64 findProcessInFolder(const QString &folder);
+    qint64 findProcessByName(const QString &exeName);
     void terminateFolderProcesses(const QString &folder);
 }

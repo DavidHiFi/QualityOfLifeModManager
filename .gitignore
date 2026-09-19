@@ -7,3 +7,4 @@ CMakeLists.txt.user
 *.user
 .qtc_clangd/
 CMakeCache.txt
+.cll_update_cache/

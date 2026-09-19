@@ -170,6 +170,7 @@ ModsPage::ModsPage(AppSettings &settings, QWidget *parent)
     connect(m_gameCombo, &QComboBox::currentTextChanged, this, &ModsPage::onGameSelected);
     connect(refreshBtn, &QPushButton::clicked, this, [this]() { onRefreshOrDeselect(false); });
     m_modList->setCursor(Qt::PointingHandCursor);
+    connect(m_modList, &QListWidget::currentItemChanged, this, [this]() { emit selectionChanged(); });
     connect(deselectBtn, &QPushButton::clicked, this, [this]() { onRefreshOrDeselect(true); });
     connect(browseBtn, &QPushButton::clicked, this, &ModsPage::onBrowseModFile);
     connect(m_installBtn, &QPushButton::clicked, this, &ModsPage::onInstallMod);
@@ -384,12 +385,18 @@ void ModsPage::refreshList()
     std::sort(rows.begin(), rows.end(), [](const Row &a, const Row &b) {
         return a.label.compare(b.label, Qt::CaseInsensitive) < 0;
     });
+    // Keep the selected mod across refreshes; losing it here made a launch
+    // silently start without the mod.
+    const QString keep = selectedMod();
     m_modList->clear();
     for (const Row &r : rows) {
         auto *item = new QListWidgetItem(r.label);
         item->setData(Qt::UserRole, r.id);
         m_modList->addItem(item);
+        if (!keep.isEmpty() && r.id.compare(keep, Qt::CaseInsensitive) == 0)
+            m_modList->setCurrentItem(item);
     }
+    emit selectionChanged();
 }
 
 void ModsPage::onGameSelected(const QString &gameName)

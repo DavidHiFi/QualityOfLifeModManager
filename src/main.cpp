@@ -108,7 +108,7 @@ int main(int argc, char *argv[])
         check("reshade dxgi gone", !QolService::reShadeInstalled(settings));
         const qint64 wd = GameLauncher::startReShadeWatchdog(settings.plutoniumInstance, err);
         check("watchdog started", wd > 0, err);
-        if (wd > 0) GameLauncher::terminatePid(wd);
+        if (wd > 0) GameLauncher::stopReShadeWatchdog();
         check("themes >= 15", Theme::names().size() >= 15, QString::number(Theme::names().size()));
         for (const QString &key : Theme::names()) {
             Theme::apply(key);

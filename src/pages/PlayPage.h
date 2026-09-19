@@ -18,6 +18,7 @@ public:
     void setGame(const QString &gameId);
     QString currentGameId() const { return m_gameId; }
     void setRunning(bool running);
+    void setSelectedMod(const QString &mod) { m_selectedMod = mod; updateLaunchOptions(); }
     bool isMultiplayer() const;
     QString selectedMode() const;
 
@@ -59,6 +60,7 @@ private:
     QCheckBox *m_reshade = nullptr;
     QLabel *m_modeHint = nullptr;
     void updateLaunchOptions();
+    QString m_selectedMod;
     bool m_running = false;
     qint64 m_blockLaunchUntil = 0;
 };

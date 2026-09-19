@@ -32,6 +32,7 @@ private slots:
     void onStopServer();
     void onSaveSettings();
     void onPollRunningProcess();
+    void onAdoptOnlineGame();
 
 private:
     enum ToolIndex { ToolPlay = 0, ToolHome, ToolQol, ToolMods, ToolServer, ToolSettings, ToolAbout };
@@ -50,6 +51,7 @@ private:
     void updateOrganizeOverlay();
     bool eventFilter(QObject *obj, QEvent *event) override;
     void resizeEvent(QResizeEvent *event) override;
+    void closeEvent(QCloseEvent *event) override;
 
     AppSettings m_settings;
     QStackedWidget *m_stack = nullptr;
@@ -88,4 +90,6 @@ private:
     QString m_runningGameId;
     qint64 m_serverPid = 0;
     QTimer m_processPollTimer;
+    QTimer m_onlineAdoptTimer;
+    int m_onlineAdoptTries = 0;
 };

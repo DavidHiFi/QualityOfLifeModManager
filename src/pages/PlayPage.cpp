@@ -283,8 +283,10 @@ void PlayPage::updateLaunchOptions()
     QString hint;
     if (online)
         hint = tr("Plutonium's launcher signs in and starts the game. Pick a mod from its Mods menu in game.");
+    else if (!m_selectedMod.isEmpty())
+        hint = tr("No login needed. Loads %1 (selected on the Mods page).").arg(m_selectedMod);
     else
-        hint = tr("No login needed. The mod selected on the Mods page loads automatically.");
+        hint = tr("No login needed. No mod selected; pick one on the Mods page to load it automatically.");
     if (m_settings.launchReShade && !reshadeReady)
         hint += QStringLiteral("  ") + tr("ReShade is not installed yet: see the Quality of Life page.");
     m_modeHint->setText(hint);

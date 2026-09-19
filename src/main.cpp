@@ -132,7 +132,7 @@ int main(int argc, char *argv[])
     if (!screenshotPath.isEmpty()) {
         const int pageIndex = qEnvironmentVariableIntValue("QOL_PAGE");
         QTimer::singleShot(100, &window, [&window, pageIndex]() { window.debugShowPage(pageIndex); });
-        QTimer::singleShot(400, &window, [&window, screenshotPath]() {
+        QTimer::singleShot(qMax(400, qEnvironmentVariableIntValue("QOL_SHOT_DELAY")), &window, [&window, screenshotPath]() {
             window.grab().save(screenshotPath);
             QApplication::quit();
         });

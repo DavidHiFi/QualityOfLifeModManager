@@ -3,8 +3,13 @@
 #include "SmartModInstaller.h"
 #include "Storage.h"
 
+#include <QCoreApplication>
+#include <QDesktopServices>
 #include <QDir>
+#include <QFile>
 #include <QHash>
+#include <QSettings>
+#include <QUrl>
 #include <QList>
 #include <QFileInfo>
 #include <QProcess>
@@ -172,6 +177,128 @@ Result launch(AppSettings &settings, const QString &modSelection)
     r.ok = true;
     r.pid = pid;
     return r;
+}
+
+bool onlineHandlerRegistered()
+{
+#ifdef Q_OS_WIN
+    // The Plutonium launcher registers plutonium:// under HKCU\Software\Classes
+    // (or HKLM for an all-users install). A protocol key advertises an empty
+    // "URL Protocol" value; the command value names the launcher exe.
+    for (const QString &root : {QStringLiteral("HKEY_CURRENT_USER"), QStringLiteral("HKEY_LOCAL_MACHINE")}) {
+        QSettings cls(root + QStringLiteral("\\Software\\Classes\\plutonium"), QSettings::NativeFormat);
+        if (!cls.contains(QStringLiteral("URL Protocol")))
+            continue;
+        QSettings cmd(root + QStringLiteral("\\Software\\Classes\\plutonium\\shell\\open\\command"), QSettings::NativeFormat);
+        QString c = cmd.value(QStringLiteral("Default")).toString();
+        if (c.isEmpty())
+            c = cmd.value(QStringLiteral(".")).toString();
+        if (c.isEmpty())
+            continue;
+        QString exe = c;
+        if (exe.startsWith(QLatin1Char('"')))
+            exe = exe.mid(1, exe.indexOf(QLatin1Char('"'), 1) - 1);
+        else
+            exe = exe.section(QLatin1Char(' '), 0, 0);
+        if (QFileInfo::exists(exe))
+            return true;
+    }
+#endif
+    return false;
+}
+
+Result launchOnline(AppSettings &settings)
+{
+    Result r;
+    const QString code = settings.modeId.left(settings.modeId.startsWith(QLatin1String("iw5")) ? 3 : 2);
+    if (code != QLatin1String("t4") && code != QLatin1String("t5")
+        && code != QLatin1String("t6") && code != QLatin1String("iw5")) {
+        r.hasError = true;
+        r.errorText = QObject::tr("Online launch is only available for the Plutonium games.");
+        return r;
+    }
+    // The handler always starts the registered install (%LOCALAPPDATA%\Plutonium).
+    // Refuse when the app is pointed somewhere else, or the user would play from a
+    // different folder than the one they configured.
+    const QString official = QDir::cleanPath(AppSettings::officialPlutoniumDir()).toLower();
+    const QString chosen = QDir::cleanPath(settings.plutoniumInstance).toLower();
+    if (chosen != official) {
+        r.hasError = true;
+        r.errorText = QObject::tr("Online play always uses the Plutonium installed in %1.\n"
+                                  "Point Settings at that folder, or play in LAN mode from the current one.")
+                          .arg(QDir::toNativeSeparators(AppSettings::officialPlutoniumDir()));
+        return r;
+    }
+    if (!onlineHandlerRegistered()) {
+        r.hasError = true;
+        r.errorText = QObject::tr("The Plutonium launcher is not registered on this PC.\n"
+                                  "Install Plutonium from plutonium.pw and run it once, then try again.");
+        return r;
+    }
+    if (!QDesktopServices::openUrl(QUrl(QStringLiteral("plutonium://play/") + settings.modeId))) {
+        r.hasError = true;
+        r.errorText = QObject::tr("Windows refused to open plutonium://play/%1.").arg(settings.modeId);
+        return r;
+    }
+    r.ok = true;
+    r.onlineHandoff = true;
+    return r;
+}
+
+QString toolsDir()
+{
+    return QDir(QCoreApplication::applicationDirPath()).filePath(QStringLiteral("tools"));
+}
+
+// Copies a resource to tools\ when it is missing or older than the one built in.
+bool unpackTool(const QString &name, QString &outPath, QString &error)
+{
+    QDir().mkpath(toolsDir());
+    outPath = QDir(toolsDir()).filePath(name);
+    QFile res(QStringLiteral(":/tools/") + name);
+    if (!res.open(QIODevice::ReadOnly)) {
+        error = QObject::tr("%1 is missing from this build.").arg(name);
+        return false;
+    }
+    const QByteArray want = res.readAll();
+    QFile have(outPath);
+    if (have.open(QIODevice::ReadOnly) && have.readAll() == want)
+        return true;
+    have.close();
+    if (!have.open(QIODevice::WriteOnly | QIODevice::Truncate) || have.write(want) != want.size()) {
+        error = QObject::tr("Could not write %1.").arg(QDir::toNativeSeparators(outPath));
+        return false;
+    }
+    return true;
+}
+
+bool reShadeInstalled(const QString &plutoniumRoot)
+{
+    return QFileInfo::exists(QDir(plutoniumRoot).filePath(QStringLiteral("bin/dxgi.dll")));
+}
+
+qint64 startReShadeWatchdog(const QString &plutoniumRoot, QString &error)
+{
+#ifndef Q_OS_WIN
+    Q_UNUSED(plutoniumRoot);
+    error = QObject::tr("ReShade is Windows only.");
+    return 0;
+#else
+    QString script;
+    if (!unpackTool(QStringLiteral("reshade-watchdog.ps1"), script, error))
+        return 0;
+    const QString ps = QDir(qEnvironmentVariable("SystemRoot", QStringLiteral("C:\\Windows")))
+                           .filePath(QStringLiteral("System32/WindowsPowerShell/v1.0/powershell.exe"));
+    qint64 pid = 0;
+    const QStringList args{QStringLiteral("-NoProfile"), QStringLiteral("-ExecutionPolicy"), QStringLiteral("Bypass"),
+                           QStringLiteral("-File"), QDir::toNativeSeparators(script),
+                           QStringLiteral("-PlutoRoot"), QDir::toNativeSeparators(plutoniumRoot)};
+    if (!QProcess::startDetached(ps, args, plutoniumRoot, &pid)) {
+        error = QObject::tr("Could not start PowerShell for the ReShade watchdog.");
+        return 0;
+    }
+    return pid;
+#endif
 }
 
 Result launchServer(AppSettings &settings, const QString &modSelection,

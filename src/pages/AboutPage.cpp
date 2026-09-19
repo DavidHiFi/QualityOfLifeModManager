@@ -10,6 +10,20 @@
 #include <QUrl>
 #include <QVBoxLayout>
 
+namespace {
+
+QPushButton *link(QWidget *parent, const QString &text, const QString &url, const char *objectName = "CreditLink")
+{
+    auto *b = new QPushButton(text, parent);
+    b->setObjectName(QLatin1String(objectName));
+    b->setCursor(Qt::PointingHandCursor);
+    b->setToolTip(url);
+    QObject::connect(b, &QPushButton::clicked, parent, [url]() { QDesktopServices::openUrl(QUrl(url)); });
+    return b;
+}
+
+} // namespace
+
 AboutPage::AboutPage(QWidget *parent)
     : QWidget(parent)
 {
@@ -36,24 +50,15 @@ AboutPage::AboutPage(QWidget *parent)
     logo->setAlignment(Qt::AlignCenter);
     root->addWidget(logo, 0, Qt::AlignHCenter);
 
-    auto *title = new QLabel(tr("Cod Lan Launcher"), col);
+    auto *title = new QLabel(QStringLiteral(QOL_APP_NAME), col);
     title->setObjectName("HeroTitle");
     title->setAlignment(Qt::AlignHCenter | Qt::AlignVCenter);
     title->setWordWrap(true);
     root->addWidget(title, 0, Qt::AlignHCenter);
 
-    auto *titleRepo = new QPushButton(QStringLiteral("GitHub"), col);
-    titleRepo->setCursor(Qt::PointingHandCursor);
-    titleRepo->setToolTip(QStringLiteral("https://github.com/MestreTM/CLL-CodLanLauncher"));
-    connect(titleRepo, &QPushButton::clicked, this, []() {
-        QDesktopServices::openUrl(QUrl(QStringLiteral("https://github.com/MestreTM/CLL-CodLanLauncher")));
-    });
-    root->addWidget(titleRepo, 0, Qt::AlignHCenter);
-
-    m_by = new QLabel(tr("por MestreTM"), col);
+    m_by = new QLabel(QStringLiteral("by " QOL_AUTHOR), col);
     m_by->setObjectName("AboutCredit");
     m_by->setAlignment(Qt::AlignHCenter | Qt::AlignVCenter);
-    m_by->setWordWrap(true);
     root->addWidget(m_by, 0, Qt::AlignHCenter);
 
     auto *ver = new QLabel(QStringLiteral("v") + QStringLiteral(CLL_VERSION), col);
@@ -61,67 +66,39 @@ AboutPage::AboutPage(QWidget *parent)
     ver->setAlignment(Qt::AlignHCenter | Qt::AlignVCenter);
     root->addWidget(ver, 0, Qt::AlignHCenter);
 
+    auto *repos = new QHBoxLayout();
+    repos->setSpacing(10);
+    repos->addStretch();
+    repos->addWidget(link(col, QStringLiteral("GitHub"), QStringLiteral(QOL_REPO_URL), "PrimaryButton"));
+    repos->addWidget(link(col, tr("The series"), QStringLiteral(QOL_SERIES_URL)));
+    repos->addWidget(link(col, tr("Licence"), QStringLiteral(QOL_REPO_URL "/blob/main/LICENSE")));
+    repos->addStretch();
+    root->addLayout(repos);
+
     m_body = new QLabel(col);
     m_body->setObjectName("AboutBody");
     m_body->setWordWrap(true);
     m_body->setAlignment(Qt::AlignHCenter | Qt::AlignTop);
     m_body->setTextFormat(Qt::PlainText);
-    m_body->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Preferred);
     root->addWidget(m_body, 0, Qt::AlignHCenter);
 
-    auto *pluto = new QPushButton(tr("plutonium.pw"), col);
-    pluto->setObjectName("CreditLink");
-    pluto->setCursor(Qt::PointingHandCursor);
-    connect(pluto, &QPushButton::clicked, this, []() {
-        QDesktopServices::openUrl(QUrl(QStringLiteral("https://plutonium.pw/")));
-    });
-    auto *xerxes = new QPushButton(QStringLiteral("xerxes-at"), col);
-    xerxes->setObjectName("CreditLink");
-    xerxes->setCursor(Qt::PointingHandCursor);
-    connect(xerxes, &QPushButton::clicked, this, []() {
-        QDesktopServices::openUrl(QUrl(QStringLiteral("https://github.com/xerxes-at")));
-    });
-    auto *jug = new QPushButton(QStringLiteral("JugAndDoubleTap"), col);
-    jug->setObjectName("CreditLink");
-    jug->setCursor(Qt::PointingHandCursor);
-    connect(jug, &QPushButton::clicked, this, []() {
-        QDesktopServices::openUrl(QUrl(QStringLiteral("https://github.com/JugAndDoubleTap/")));
-    });
     auto *row = new QHBoxLayout();
     row->setSpacing(10);
-    row->setAlignment(Qt::AlignHCenter);
     row->addStretch();
-    row->addWidget(pluto);
-    row->addWidget(xerxes);
-    row->addWidget(jug);
+    row->addWidget(link(col, QStringLiteral("DavidHiFi"), QStringLiteral(QOL_AUTHOR_URL)));
+    row->addWidget(link(col, QStringLiteral("Cod Lan Launcher"), QStringLiteral(CLL_UPSTREAM_URL)));
+    row->addWidget(link(col, QStringLiteral("plutonium.pw"), QStringLiteral("https://plutonium.pw/")));
+    row->addWidget(link(col, QStringLiteral("ReShade"), QStringLiteral("https://reshade.me/")));
     row->addStretch();
     root->addLayout(row);
 
-    auto *aw = new QPushButton(QStringLiteral("alterware.dev"), col);
-    aw->setObjectName("CreditLink");
-    aw->setCursor(Qt::PointingHandCursor);
-    connect(aw, &QPushButton::clicked, this, []() {
-        QDesktopServices::openUrl(QUrl(QStringLiteral("https://alterware.dev")));
-    });
-    auto *boiii = new QPushButton(QStringLiteral("boiii-community"), col);
-    boiii->setObjectName("CreditLink");
-    boiii->setCursor(Qt::PointingHandCursor);
-    connect(boiii, &QPushButton::clicked, this, []() {
-        QDesktopServices::openUrl(QUrl(QStringLiteral("https://gitlab.com/boiii-community/BOIII-Community")));
-    });
-    auto *ezz = new QPushButton(QStringLiteral("ezz.lol"), col);
-    ezz->setObjectName("CreditLink");
-    ezz->setCursor(Qt::PointingHandCursor);
-    connect(ezz, &QPushButton::clicked, this, []() {
-        QDesktopServices::openUrl(QUrl(QStringLiteral("https://ezz.lol")));
-    });
     auto *row2 = new QHBoxLayout();
     row2->setSpacing(10);
-    row2->setAlignment(Qt::AlignHCenter);
     row2->addStretch();
-    row2->addWidget(aw);
-    row2->addWidget(boiii);
-    row2->addWidget(ezz);
+    row2->addWidget(link(col, QStringLiteral("JugAndDoubleTap"), QStringLiteral("https://github.com/JugAndDoubleTap/")));
+    row2->addWidget(link(col, QStringLiteral("xerxes-at"), QStringLiteral("https://github.com/xerxes-at")));
+    row2->addWidget(link(col, QStringLiteral("alterware.dev"), QStringLiteral("https://alterware.dev")));
+    row2->addWidget(link(col, QStringLiteral("boiii-community"), QStringLiteral("https://gitlab.com/boiii-community/BOIII-Community")));
     row2->addStretch();
     root->addLayout(row2);
 
@@ -133,17 +110,13 @@ AboutPage::AboutPage(QWidget *parent)
 
 void AboutPage::retranslate()
 {
-    if (m_by)
-        m_by->setText(tr("por MestreTM"));
     if (m_body)
-        m_body->setText(tr("Launcher offline para Plutonium (T4 / T5 / T6 / IW5) e clients extras.\n\n"
-                           "Este programa e de MestreTM.\n"
-                           "A ideia e a logica original foram baseadas no LanLauncher de JugAndDoubleTap.\n"
-                           "Arquivos de configuracao de servidor LAN (T4 / T5 / T6) by xerxes-at.\n"
-                           "Traducao em turco: TehTurkishSpartan.\n"
-                           "Codigo-fonte de alguns clients: alterware.dev.\n"
-                           "Client alternativo de BO3: boiii-community.\n"
-                           "Source do client nativo de BO3: ezz.lol.\n\n"
-                           "Plutonium e uma marca da equipe Plutonium. Call of Duty e da Activision / Treyarch.\n"
-                           "Este projeto nao e afiliado a nenhuma delas."));
+        m_body->setText(tr("Installs, updates, launches and removes mods for Call of Duty on Plutonium, "
+                           "with the Quality of Life series front and centre.\n\n"
+                           "Written by DavidHiFi. Forked from Cod Lan Launcher by MestreTM (LGPL-3.0), "
+                           "which grew out of JugAndDoubleTap's LanLauncher. LAN server configs by xerxes-at. "
+                           "Some standalone client sources come from alterware.dev; the alternative Black Ops III "
+                           "client is by boiii-community. ReShade is by crosire.\n\n"
+                           "Plutonium belongs to the Plutonium team. Call of Duty belongs to Activision and Treyarch. "
+                           "This project is not affiliated with any of them."));
 }

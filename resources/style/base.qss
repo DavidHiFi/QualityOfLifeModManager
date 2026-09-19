@@ -453,6 +453,25 @@ QLabel#DialogIcon { padding-right: 6px; }
     padding: 0;
 }
 
+/* LAN | Online segmented switch on the play page */
+#SegmentButton {
+    background: rgba(12,13,22,0.55);
+    color: @HERO_SUB@;
+    border: 1px solid rgba(255,255,255,0.18);
+    padding: 0 16px;
+    font-weight: 600;
+}
+#SegmentButton[segment="left"]  { border-top-left-radius: @R_SM@; border-bottom-left-radius: @R_SM@; border-right: none; }
+#SegmentButton[segment="right"] { border-top-right-radius: @R_SM@; border-bottom-right-radius: @R_SM@; }
+#SegmentButton:hover { color: @HERO_TEXT@; background: rgba(12,13,22,0.75); }
+#SegmentButton:checked {
+    background: @ACCENT@;
+    color: @ACCENT_TEXT@;
+    border-color: @ACCENT@;
+}
+#PlayPage QCheckBox[onArt="true"] { color: @HERO_SUB@; }
+#PlayPage QCheckBox[onArt="true"]:checked { color: @HERO_TEXT@; }
+
 #AboutColumn { background: transparent; }
 #AboutCredit {
     color: @ACCENT_SOFT@;

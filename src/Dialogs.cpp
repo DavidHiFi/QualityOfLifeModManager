@@ -1,4 +1,5 @@
 #include "Dialogs.h"
+#include "Version.h"
 #include "AppSettings.h"
 
 #include <QMessageBox>
@@ -77,7 +78,7 @@ void Dialogs::info(QWidget *parent, Msg kind, const AppSettings &settings)
 {
     const QString text = messageFor(kind, settings);
     QMessageBox box(parent);
-    box.setWindowTitle("Cod Lan Launcher");
+    box.setWindowTitle(QOL_APP_NAME);
     box.setIcon(QMessageBox::Information);
     box.setText(text);
     box.setStandardButtons(QMessageBox::Ok);
@@ -87,7 +88,7 @@ void Dialogs::info(QWidget *parent, Msg kind, const AppSettings &settings)
 bool Dialogs::confirmDownload7z(QWidget *parent)
 {
     QMessageBox box(parent);
-    box.setWindowTitle("Cod Lan Launcher");
+    box.setWindowTitle(QOL_APP_NAME);
     box.setIcon(QMessageBox::Question);
     box.setText(QObject::tr(
         "Voce ainda nao tem o 7-Zip instalado na pasta do Cod Lan Launcher,\n"
@@ -101,7 +102,7 @@ bool Dialogs::confirmDownload7z(QWidget *parent)
 bool Dialogs::confirmDownloadGameSettings(QWidget *parent)
 {
     QMessageBox box(parent);
-    box.setWindowTitle("Cod Lan Launcher");
+    box.setWindowTitle(QOL_APP_NAME);
     box.setIcon(QMessageBox::Question);
     box.setText(QObject::tr(
         "Voce ainda nao tem os arquivos de configuracao principais necessarios\n"
@@ -115,7 +116,7 @@ bool Dialogs::confirmDownloadGameSettings(QWidget *parent)
 bool Dialogs::confirmDownloadT5Settings(QWidget *parent)
 {
     QMessageBox box(parent);
-    box.setWindowTitle("Cod Lan Launcher");
+    box.setWindowTitle(QOL_APP_NAME);
     box.setIcon(QMessageBox::Question);
     box.setText(QObject::tr(
         "Voce ainda nao tem dedicated.cfg / dedicated_sp.cfg do Black Ops (T5).\n"
@@ -129,7 +130,7 @@ bool Dialogs::confirmDownloadT5Settings(QWidget *parent)
 bool Dialogs::confirmDownloadT4Settings(QWidget *parent)
 {
     QMessageBox box(parent);
-    box.setWindowTitle("Cod Lan Launcher");
+    box.setWindowTitle(QOL_APP_NAME);
     box.setIcon(QMessageBox::Question);
     box.setText(QObject::tr(
         "Voce ainda nao tem server.cfg / server_zm.cfg do World at War (T4).\n"
@@ -143,7 +144,7 @@ bool Dialogs::confirmDownloadT4Settings(QWidget *parent)
 bool Dialogs::confirmUpdate(QWidget *parent, const QString &newVersion)
 {
     QMessageBox box(parent);
-    box.setWindowTitle("Cod Lan Launcher");
+    box.setWindowTitle(QOL_APP_NAME);
     box.setIcon(QMessageBox::Question);
     box.setText(QObject::tr("Ha uma atualizacao disponivel,\ndeseja atualizar para a versao %1?").arg(newVersion));
     box.setStandardButtons(QMessageBox::Yes | QMessageBox::No);
@@ -154,7 +155,7 @@ bool Dialogs::confirmUpdate(QWidget *parent, const QString &newVersion)
 void Dialogs::error(QWidget *parent, const QString &message)
 {
     QMessageBox box(parent);
-    box.setWindowTitle("Cod Lan Launcher");
+    box.setWindowTitle(QOL_APP_NAME);
     box.setIcon(QMessageBox::Warning);
     box.setText(message);
     box.setStandardButtons(QMessageBox::Ok);

@@ -6,6 +6,9 @@
 #include "ProgressDialog.h"
 #include "UpdateService.h"
 #include "../Checkables.h"
+#include "GameLauncher.h"
+#include "Version.h"
+#include <QCheckBox>
 
 #include <QPainter>
 #include <QLinearGradient>
@@ -68,6 +71,58 @@ PlayPage::PlayPage(AppSettings &settings, QWidget *parent)
     root->addSpacing(8);
     root->addWidget(m_path);
     root->addSpacing(18);
+
+    // Launch options: LAN (bootstrapper, the mod can be pre-loaded) or Online
+    // (Plutonium's own launcher does the login), plus ReShade beside either.
+    auto *opts = new QHBoxLayout();
+    opts->setSpacing(0);
+    m_lanBtn = new QPushButton(tr("LAN"), this);
+    m_onlineBtn = new QPushButton(tr("Online"), this);
+    for (QPushButton *b : {m_lanBtn, m_onlineBtn}) {
+        b->setObjectName("SegmentButton");
+        b->setCheckable(true);
+        b->setCursor(Qt::PointingHandCursor);
+        b->setMinimumHeight(32);
+        b->setMinimumWidth(84);
+    }
+    m_lanBtn->setProperty("segment", "left");
+    m_onlineBtn->setProperty("segment", "right");
+    auto *seg = new QButtonGroup(this);
+    seg->addButton(m_lanBtn);
+    seg->addButton(m_onlineBtn);
+    (m_settings.launchOnline ? m_onlineBtn : m_lanBtn)->setChecked(true);
+    opts->addWidget(m_lanBtn);
+    opts->addWidget(m_onlineBtn);
+    opts->addSpacing(16);
+    m_reshade = new Ui::CheckBox(tr("ReShade"), this);
+    m_reshade->setProperty("onArt", true);
+    m_reshade->setChecked(m_settings.launchReShade);
+    m_reshade->setToolTip(tr("Start the ReShade watchdog beside the game. Plutonium clears ReShade out of its bin folder on every start; the watchdog puts it back."));
+    opts->addWidget(m_reshade);
+    opts->addSpacing(12);
+    m_modeHint = new QLabel(this);
+    m_modeHint->setObjectName("HeroPath");
+    m_modeHint->setWordWrap(true);
+    opts->addWidget(m_modeHint, 1);
+    root->addLayout(opts);
+    root->addSpacing(10);
+    connect(m_lanBtn, &QPushButton::toggled, this, [this](bool on) {
+        if (!on) return;
+        m_settings.launchOnline = false;
+        m_settings.saveToIni();
+        updateLaunchOptions();
+    });
+    connect(m_onlineBtn, &QPushButton::toggled, this, [this](bool on) {
+        if (!on) return;
+        m_settings.launchOnline = true;
+        m_settings.saveToIni();
+        updateLaunchOptions();
+    });
+    connect(m_reshade, &QCheckBox::toggled, this, [this](bool on) {
+        m_settings.launchReShade = on;
+        m_settings.saveToIni();
+        updateLaunchOptions();
+    });
 
     auto *row = new QHBoxLayout();
     m_spzm = new Ui::RadioButton(tr("Solo / Zombies"), this);
@@ -142,7 +197,12 @@ PlayPage::PlayPage(AppSettings &settings, QWidget *parent)
                 installBo3Client(QStringLiteral("cll"), false, true);
                 return;
         }
-        emit launchRequested(m_gameId, selectedMode());
+        const bool plutoGame = code == QLatin1String("t4") || code == QLatin1String("t5")
+                            || code == QLatin1String("t6") || code == QLatin1String("iw5");
+        if (plutoGame && m_settings.launchOnline)
+            emit launchOnlineRequested(m_gameId, selectedMode());
+        else
+            emit launchRequested(m_gameId, selectedMode());
     });
 
     auto refreshOnToggle = [this](bool on) {
@@ -199,8 +259,36 @@ void PlayPage::setGame(const QString &gameId)
     if (!g.hasZmSp)
         m_mp->setChecked(true);
     updateClientButton();
+    updateLaunchOptions();
     refreshArt();
     update();
+}
+
+void PlayPage::updateLaunchOptions()
+{
+    if (!m_lanBtn)
+        return;
+    const QString code = GameCatalog::byId(m_gameId).code;
+    const bool plutoGame = code == QLatin1String("t4") || code == QLatin1String("t5")
+                        || code == QLatin1String("t6") || code == QLatin1String("iw5");
+    m_lanBtn->setVisible(plutoGame);
+    m_onlineBtn->setVisible(plutoGame);
+    m_reshade->setVisible(plutoGame);
+    if (!plutoGame) {
+        m_modeHint->clear();
+        return;
+    }
+    const bool online = m_settings.launchOnline;
+    const bool reshadeReady = GameLauncher::reShadeInstalled(m_settings.plutoniumInstance);
+    QString hint;
+    if (online)
+        hint = tr("Plutonium's launcher signs in and starts the game. Pick a mod from its Mods menu in game.");
+    else
+        hint = tr("No login needed. The mod selected on the Mods page loads automatically.");
+    if (m_settings.launchReShade && !reshadeReady)
+        hint += QStringLiteral("  ") + tr("ReShade is not installed yet: see the Quality of Life page.");
+    m_modeHint->setText(hint);
+    m_play->setText(m_running ? tr("Encerrar") : (online ? tr("Play online") : tr("Iniciar")));
 }
 
 void PlayPage::setRunning(bool running)
@@ -211,7 +299,7 @@ void PlayPage::setRunning(bool running)
         m_play->setProperty("cssClass", "danger");
         m_play->setObjectName("StopButton");
     } else {
-        m_play->setText(tr("Iniciar"));
+        m_play->setText(m_settings.launchOnline ? tr("Play online") : tr("Iniciar"));
         m_play->setProperty("cssClass", "primary");
         m_play->setObjectName("PlayButton");
     }
@@ -618,6 +706,9 @@ void PlayPage::installS1Client(bool notifyWhenDone, bool launchWhenReady)
 
 void PlayPage::retranslate()
 {
+    if (m_lanBtn) m_lanBtn->setText(tr("LAN"));
+    if (m_onlineBtn) m_onlineBtn->setText(tr("Online"));
+    if (m_reshade) m_reshade->setText(tr("ReShade"));
     if (m_mp)
         m_mp->setText(tr("Multiplayer"));
     if (m_sp)

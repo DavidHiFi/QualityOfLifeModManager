@@ -1,4 +1,5 @@
 #include "HomeCatalog.h"
+#include "Version.h"
 #include "AppSettings.h"
 #include "Downloader.h"
 
@@ -82,7 +83,7 @@ namespace HomeCatalog {
 
 QString catalogUrl()
 {
-    return QStringLiteral("https://mestretm.github.io/CLL-Cod-Lan-Launcher/cll_home.json");
+    return QStringLiteral(QOL_HOME_FEED_URL);
 }
 
 QString defaultPath()
@@ -101,7 +102,7 @@ Catalog parseCatalog(const QByteArray &raw, QString &error)
     QJsonParseError err {};
     const QJsonDocument doc = QJsonDocument::fromJson(raw, &err);
     if (err.error != QJsonParseError::NoError || !doc.isObject()) {
-        error = QObject::tr("cll_home.json invalido: %1").arg(err.errorString());
+        error = QObject::tr("qol_home.json is not valid: %1").arg(err.errorString());
         return c;
     }
 
@@ -149,7 +150,7 @@ Catalog parseCatalog(const QByteArray &raw, QString &error)
 
 Catalog loadFromCacheFile(QString &error)
 {
-    QFile f(cacheDir() + QStringLiteral("/cll_home.json"));
+    QFile f(cacheDir() + QStringLiteral("/qol_home.json"));
     if (!f.open(QIODevice::ReadOnly)) {
         error = QObject::tr("Could not load the page.");
         return {};
@@ -162,7 +163,7 @@ Catalog loadFromCacheFile(QString &error)
 
 void saveCatalogCache(const QByteArray &raw)
 {
-    const QString path = cacheDir() + QStringLiteral("/cll_home.json");
+    const QString path = cacheDir() + QStringLiteral("/qol_home.json");
     QDir().mkpath(QFileInfo(path).absolutePath());
     QFile f(path);
     if (f.open(QIODevice::WriteOnly | QIODevice::Truncate))
@@ -191,6 +192,16 @@ Catalog load(const QString &path)
 
     QString cacheError;
     Catalog cached = loadFromCacheFile(cacheError);
+    if (!cached.ok) {
+        // Never downloaded: fall back to the copy built into the exe.
+        QFile builtIn(QStringLiteral(":/qol_home.json"));
+        if (builtIn.open(QIODevice::ReadOnly)) {
+            QString e;
+            cached = parseCatalog(builtIn.readAll(), e);
+            if (cached.ok)
+                cached.fromCache = true;
+        }
+    }
     if (cached.ok) {
         cached.error = netError.isEmpty()
                            ? QObject::tr("Showing the last downloaded catalog.")

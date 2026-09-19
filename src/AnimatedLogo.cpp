@@ -7,7 +7,9 @@ AnimatedLogo::AnimatedLogo(QWidget *parent)
     : QWidget(parent)
 {
     setAttribute(Qt::WA_TransparentForMouseEvents);
-    m_pix = QIcon(":/icons/app.svg").pixmap(QSize(256, 256));
+    m_pix = QIcon(":/icons/icon.ico").pixmap(QSize(256, 256));
+    if (m_pix.isNull())
+        m_pix = QIcon(":/icons/app.svg").pixmap(QSize(256, 256));
 }
 
 void AnimatedLogo::setLogoSize(int px)

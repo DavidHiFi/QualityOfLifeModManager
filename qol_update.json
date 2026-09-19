@@ -1,0 +1,42 @@
+{
+  "source": "https://raw.githubusercontent.com/DavidHiFi/QualityOfLifeModManager/main/qol_update.json",
+  "note": "Regenerate with scripts/gen_update.py after each release. Only the launcher item is this project's; the rest are the upstream Cod LAN Launcher components the app can still fetch.",
+  "items": [
+    {
+      "id": "launcher",
+      "name": "QualityOfLifeModManager.exe",
+      "repo": "DavidHiFi/QualityOfLifeModManager",
+      "version": "v2.0.0",
+      "url": "https://github.com/DavidHiFi/QualityOfLifeModManager/releases/latest/download/QualityOfLifeModManager.exe",
+      "hash": "",
+      "size": 0
+    },
+    {
+      "id": "pu",
+      "name": "pu.dat",
+      "repo": "MestreTM/CLL-Cod-Lan-Launcher",
+      "version": "v0.1",
+      "url": "https://github.com/MestreTM/CLL-Cod-Lan-Launcher/releases/download/v0.1/pu.dat",
+      "hash": "b18b2ab806e3919ed930d25331973d4d9a4eebc9",
+      "size": 404104139
+    },
+    {
+      "id": "t7-cll",
+      "name": "t7_cll.zip",
+      "repo": "MestreTM/t7-cll",
+      "version": "v1.0.0",
+      "url": "https://github.com/MestreTM/t7-cll/releases/latest/download/t7_cll.zip",
+      "hash": "9ffb0062fde7bab91b1d88ccf5d2a35c77edb1c2",
+      "size": 6302923
+    },
+    {
+      "id": "s1-cll",
+      "name": "s1.exe",
+      "repo": "MestreTM/s1-cll",
+      "version": "v1.0.0",
+      "url": "https://github.com/MestreTM/s1-cll/releases/latest/download/s1.exe",
+      "hash": "287b3ed7e16461c4e99043641f24b10afcaa4a05",
+      "size": 6744064
+    }
+  ]
+}

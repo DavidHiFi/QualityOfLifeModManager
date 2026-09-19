@@ -1,5 +1,6 @@
 #pragma once
 #include <QString>
+#include "Version.h"
 #include <QList>
 #include <functional>
 
@@ -9,7 +10,7 @@ class QWidget;
 namespace UpdateService
 {
     inline const char kFeedUrl[] =
-        "https://mestretm.github.io/CLL-Cod-Lan-Launcher/cll_update.json";
+        QOL_UPDATE_FEED_URL;
 
     struct Item {
         QString id;

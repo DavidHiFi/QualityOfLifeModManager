@@ -46,7 +46,12 @@ QList<Game> ordered(const QStringList &codes)
     const QList<Game> base = all();
     QList<Game> out;
     QStringList used;
-    for (const QString &code : codes) {
+    // First run: the Quality of Life series games lead, Black Ops II first
+    // because it is the one with a released mod.
+    const QStringList order = codes.isEmpty()
+        ? QStringList{"t6", "t4", "t5", "t7", "iw5", "s1"}
+        : codes;
+    for (const QString &code : order) {
         for (const Game &g : base) {
             if (g.code.compare(code, Qt::CaseInsensitive) == 0 && !used.contains(g.code)) {
                 out << g;

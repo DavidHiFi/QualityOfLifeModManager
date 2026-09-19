@@ -1,10 +1,28 @@
 scripts/
 ========
 
-Windows batch files used to build a single-file LanLauncherQt.exe against
-a static Qt 6 prefix. Edit the SET lines at the top of each script if your
-disks or versions differ from the defaults (Y:\QT ...).
+build.ps1 (the one used for releases)
+-------------------------------------
+Dynamic build against an installed Qt 6 MinGW kit, then windeployqt stages
+dist\ with the Qt DLLs next to QualityOfLifeModManager.exe. Zip dist\ and
+that is the portable download.
 
+  powershell -ExecutionPolicy Bypass -File scripts\build.ps1 [-Clean]
+
+Paths at the top of the script: Qt kit, MinGW bin, and the Visual Studio
+folder that carries cmake.exe and ninja.exe. windres is run with
+--use-temp-file because the piped preprocessor fails on some machines.
+
+gen_update.py
+-------------
+Regenerates qol_update.json from the latest GitHub releases. Run after
+publishing a release, commit the result, and the app offers the update.
+
+  python scripts\gen_update.py -o qol_update.json
+
+
+The two .bat files below are the upstream Cod LAN Launcher static-Qt
+route (one exe, no DLLs). They still work; expect a 1-3 hour Qt build.
 
 1. build-qt-static.bat
 ----------------------
@@ -42,7 +60,7 @@ Needs gcc, cmake, python, perl (Strawberry) and ninja on PATH.
 
 2. build-app.bat
 ----------------
-Configure + compile LanLauncherQt and copy the exe to dist-static\.
+Configure + compile the app and copy the exe to dist-static\.
 Art, icons and language files are already inside the exe.
 
   scripts\build-app.bat
@@ -58,7 +76,7 @@ Variables to change (top of the file):
   BUILD_DIR   App build folder (wiped every run).
               Default: build-static   (next to CMakeLists.txt)
 
-  DIST        Output folder. Only LanLauncherQt.exe is copied here.
+  DIST        Output folder. Only QualityOfLifeModManager.exe is copied here.
               Default: dist-static
 
 Uses the "MinGW Makefiles" generator on purpose. Ninja was observed to
@@ -72,10 +90,10 @@ Typical flow
   3. Edit the SET lines if your layout is different
   4. scripts\build-qt-static.bat
   5. scripts\build-app.bat
-  6. Ship dist-static\LanLauncherQt.exe
+  6. Ship dist-static\QualityOfLifeModManager.exe
 
 
 Windows exe icon
 ----------------
-resources/icons/icon.ico is linked into LanLauncherQt.exe via resources/app.rc.in.
+resources/icons/icon.ico is linked into QualityOfLifeModManager.exe via resources/app.rc.in.
 Replace that .ico and rebuild if you want a different mark.

@@ -1,7 +1,9 @@
 #include "AppSettings.h"
 #include "Version.h"
 #include "GameLauncher.h"
+#include "Theme.h"
 #include "MainWindow.h"
+#include "QolService.h"
 
 #include <QApplication>
 #include <QCommandLineOption>
@@ -49,7 +51,7 @@ int runNoGui(AppSettings &settings, const QCommandLineParser &parser)
 
     const GameLauncher::Result result = GameLauncher::launch(settings, QString());
     if (result.hasError) {
-        QTextStream(stdout) << "Cod Lan Launcher: falha ao lancar (veja LanLauncher.ini / parametros).\n";
+        QTextStream(stdout) << QOL_APP_NAME ": launch failed (check " QOL_INI_NAME " and the arguments).\n";
         return 1;
     }
     return 0;
@@ -60,9 +62,9 @@ int runNoGui(AppSettings &settings, const QCommandLineParser &parser)
 int main(int argc, char *argv[])
 {
     QApplication app(argc, argv);
-    QApplication::setApplicationName("Cod Lan Launcher");
+    QApplication::setApplicationName(QOL_APP_NAME);
     QApplication::setApplicationVersion(QStringLiteral(CLL_VERSION));
-    QApplication::setOrganizationName("MestreTM");
+    QApplication::setOrganizationName(QOL_AUTHOR);
     QDir::setCurrent(QCoreApplication::applicationDirPath());
 
     QCommandLineParser parser;
@@ -70,16 +72,51 @@ int main(int argc, char *argv[])
     // instead of treating them as clustered short options (-n -o -g -u -i).
     parser.setSingleDashWordOptionMode(QCommandLineParser::ParseAsLongOptions);
     parser.setApplicationDescription(
-        "Cod Lan Launcher, para quando voce quer jogar Plutonium sem uma conexao de internet ativa!");
+        QOL_APP_NAME ": install, update and launch mods for Call of Duty on Plutonium.");
     parser.addHelpOption();
     parser.addVersionOption();
-    parser.addOption({"name", "Nome de usuario, ex: \"MestreTM\". Padrao: o definido na GUI.", "name"});
+    parser.addOption({"name", "In-game name. Default: the one set in the app.", "name"});
     parser.addOption({"plutoniumdir", "Local da pasta do Plutonium. Deve ser usado com -nogui.", "plutoniumdir"});
     parser.addOption({"mode", "Seletor de modo: \"MP\" ou \"ZM\". Deve ser usado com -nogui.", "mode", "ZM"});
     parser.addOption({"gamedir", "Local em que o jogo esta instalado. Deve ser usado com -nogui.", "gamedir"});
     parser.addOption({"gameid", "ID do jogo: T4, T5, T6, ou IW5. Deve ser usado com -nogui.", "gameid"});
     parser.addOption({"nogui", "Lanca sem interface grafica."});
+    parser.addOption({"selftest", "Offline checks against -plutoniumdir (ReShade install/remove, watchdog unpack, "
+                                  "online handler probe); prints one line per check and exits non-zero on failure."});
     parser.process(app);
+
+    if (parser.isSet("selftest")) {
+        AppSettings settings = AppSettings::loadForStartup();
+        if (parser.isSet("plutoniumdir"))
+            settings.plutoniumInstance = AppSettings::resolvePath(parser.value("plutoniumdir"));
+        QTextStream out(stdout);
+        int failures = 0;
+        auto check = [&](const QString &name, bool ok, const QString &detail = QString()) {
+            out << (ok ? "PASS " : "FAIL ") << name;
+            if (!detail.isEmpty()) out << " - " << detail;
+            out << '\n';
+            out.flush();
+            if (!ok) ++failures;
+        };
+        check("plutonium root", AppSettings::isPlutoniumRoot(settings.plutoniumInstance), settings.plutoniumInstance);
+        check("online handler registered", GameLauncher::onlineHandlerRegistered());
+        QString err;
+        check("reshade install", QolService::installReShade(settings, err), err);
+        check("reshade dxgi present", QolService::reShadeInstalled(settings));
+        check("reshade vault present", QDir(QolService::reShadeVault(settings)).exists());
+        check("reshade remove", QolService::removeReShade(settings, err), err);
+        check("reshade dxgi gone", !QolService::reShadeInstalled(settings));
+        const qint64 wd = GameLauncher::startReShadeWatchdog(settings.plutoniumInstance, err);
+        check("watchdog started", wd > 0, err);
+        if (wd > 0) GameLauncher::terminatePid(wd);
+        check("themes >= 15", Theme::names().size() >= 15, QString::number(Theme::names().size()));
+        for (const QString &key : Theme::names()) {
+            Theme::apply(key);
+            check("theme " + key, Theme::token("BG").startsWith('#') && !Theme::displayName(key).isEmpty(), Theme::displayName(key));
+        }
+        check("series has t6", QolService::seriesFor("t6").released);
+        return failures == 0 ? 0 : 2;
+    }
 
     if (parser.isSet("nogui")) {
         AppSettings settings = AppSettings::loadForStartup();
@@ -90,10 +127,10 @@ int main(int argc, char *argv[])
     window.show();
 
     // Internal debug helper: dump a window screenshot when
-    // LANLAUNCHER_SCREENSHOT=path.png is set (useful without an interactive display).
-    const QString screenshotPath = qEnvironmentVariable("LANLAUNCHER_SCREENSHOT");
+    // QOL_SCREENSHOT=path.png is set (useful without an interactive display).
+    const QString screenshotPath = qEnvironmentVariable("QOL_SCREENSHOT");
     if (!screenshotPath.isEmpty()) {
-        const int pageIndex = qEnvironmentVariableIntValue("LANLAUNCHER_PAGE");
+        const int pageIndex = qEnvironmentVariableIntValue("QOL_PAGE");
         QTimer::singleShot(100, &window, [&window, pageIndex]() { window.debugShowPage(pageIndex); });
         QTimer::singleShot(400, &window, [&window, screenshotPath]() {
             window.grab().save(screenshotPath);

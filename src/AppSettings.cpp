@@ -1,4 +1,5 @@
 #include "AppSettings.h"
+#include "Version.h"
 #include "I18n.h"
 
 #include <QCoreApplication>
@@ -14,7 +15,7 @@ QString AppSettings::projectRoot()
 
 QString AppSettings::iniPath()
 {
-    return QDir(projectRoot()).filePath("LanLauncher.ini");
+    return QDir(projectRoot()).filePath(QOL_INI_NAME);
 }
 
 QString AppSettings::resolvePath(const QString &path)
@@ -113,7 +114,7 @@ bool AppSettings::loadFromIni()
         return false;
 
     QSettings ini(iniPath(), QSettings::IniFormat);
-    ini.beginGroup("LanLauncher");
+    ini.beginGroup("QualityOfLife");
     username          = ini.value("username", username).toString();
     plutoniumInstance = ini.value("plutonium folder", plutoniumInstance).toString();
     waw               = ini.value("world at war folder", waw).toString();
@@ -129,6 +130,8 @@ bool AppSettings::loadFromIni()
     gameOrder         = ini.value("game order").toString().split(QLatin1Char(','), Qt::SkipEmptyParts);
     gameOrderHintSeen = ini.value("game order hint seen", false).toBool();
     checkUpdatesOnStart = ini.value("check updates on start", true).toBool();
+    launchOnline      = ini.value("launch online", false).toBool();
+    launchReShade     = ini.value("launch reshade", false).toBool();
     bo3Client         = ini.value("bo3 client", QStringLiteral("cll")).toString();
     if (bo3Client != QLatin1String("competitive"))
         bo3Client = QStringLiteral("cll");
@@ -150,7 +153,7 @@ void AppSettings::saveToIni() const
     AppSettings copy = *this;
     copy.resolveStoredPaths();
     QSettings ini(iniPath(), QSettings::IniFormat);
-    ini.beginGroup("LanLauncher");
+    ini.beginGroup("QualityOfLife");
     ini.setValue("username", copy.username);
     ini.setValue("plutonium folder", copy.plutoniumInstance);
     ini.setValue("world at war folder", copy.waw);
@@ -166,6 +169,8 @@ void AppSettings::saveToIni() const
     ini.setValue("game order", copy.gameOrder.join(QLatin1Char(',')));
     ini.setValue("game order hint seen", copy.gameOrderHintSeen);
     ini.setValue("check updates on start", copy.checkUpdatesOnStart);
+    ini.setValue("launch online", copy.launchOnline);
+    ini.setValue("launch reshade", copy.launchReShade);
     ini.setValue("bo3 client", copy.bo3Client);
     ini.setValue("bo3 client chosen", copy.bo3ClientChosen);
     ini.setValue("aw client ready", copy.awClientReady);

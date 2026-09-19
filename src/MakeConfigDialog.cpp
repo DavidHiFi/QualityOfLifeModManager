@@ -1,4 +1,5 @@
 #include "Checkables.h"
+#include "Version.h"
 #include "MakeConfigDialog.h"
 #include "AppSettings.h"
 #include "ConfigMaker.h"
@@ -25,7 +26,7 @@ MakeConfigDialog::MakeConfigDialog(AppSettings &settings, const QString &serverI
     , m_serverId(serverId)
     , m_multiplayer(multiplayer)
 {
-    setWindowTitle("Cod Lan Launcher");
+    setWindowTitle(QOL_APP_NAME);
     m_mapGroup = new QButtonGroup(this);
     setMinimumWidth(520);
 

@@ -1,7 +1,7 @@
 @echo off
 setlocal EnableExtensions EnableDelayedExpansion
 
-rem Build LanLauncherQt against a static Qt prefix (MinGW Makefiles).
+rem Build QualityOfLifeModManager against a static Qt prefix (MinGW Makefiles).
 rem Ninja is avoided here: it loops when the source is on C: and Qt is on Y:.
 
 rem --- edit these if your Qt / MinGW live somewhere else ---
@@ -13,7 +13,7 @@ set "DIST=dist-static"
 cd /d "%~dp0\.."
 
 if not exist "CMakeLists.txt" (
-    echo [ERROR] Run this from the LanLauncher tree. Current dir: %CD%
+    echo [ERROR] Run this from the app tree. Current dir: %CD%
     exit /b 1
 )
 if not exist "%PREFIX%\bin\qmake.exe" (
@@ -28,7 +28,7 @@ if not exist "%MINGW_BIN%\mingw32-make.exe" (
 set "PATH=%MINGW_BIN%;%PREFIX%\bin;%PATH%"
 
 echo.
-echo === LanLauncherQt static Qt / MinGW Makefiles ===
+echo === QualityOfLifeModManager static Qt / MinGW Makefiles ===
 echo PREFIX %PREFIX%
 echo SRC    %CD%
 echo.
@@ -46,18 +46,18 @@ if errorlevel 1 exit /b 1
 cmake --build "%BUILD_DIR%" --parallel
 if errorlevel 1 exit /b 1
 
-if not exist "%BUILD_DIR%\CodLanLaucher.exe" (
-    echo [ERROR] CodLanLaucher.exe was not produced
+if not exist "%BUILD_DIR%\QualityOfLifeModManager.exe" (
+    echo [ERROR] QualityOfLifeModManager.exe was not produced
     dir /s /b "%BUILD_DIR%\*.exe"
     exit /b 1
 )
 
 if exist "%DIST%" rmdir /s /q "%DIST%"
 mkdir "%DIST%"
-copy /y "%BUILD_DIR%\CodLanLaucher.exe" "%DIST%\CodLanLaucher.exe" >nul
+copy /y "%BUILD_DIR%\QualityOfLifeModManager.exe" "%DIST%\QualityOfLifeModManager.exe" >nul
 
 echo.
-echo Done: %CD%\%DIST%\CodLanLaucher.exe
+echo Done: %CD%\%DIST%\QualityOfLifeModManager.exe
 dir /b "%DIST%"
 echo.
 exit /b 0

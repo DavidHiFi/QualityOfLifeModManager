@@ -6,6 +6,7 @@ class QLabel;
 class QPushButton;
 class QRadioButton;
 class QLineEdit;
+class QCheckBox;
 class AppSettings;
 
 class PlayPage : public QWidget
@@ -22,6 +23,7 @@ public:
 
 signals:
     void launchRequested(const QString &gameId, const QString &mode);
+    void launchOnlineRequested(const QString &gameId, const QString &mode);
     void stopRequested(const QString &gameId);
 
 protected:
@@ -52,6 +54,11 @@ private:
     QRadioButton *m_sv = nullptr;
     QPushButton *m_play = nullptr;
     QPushButton *m_clientBtn = nullptr;
+    QPushButton *m_lanBtn = nullptr;     // segmented LAN | Online
+    QPushButton *m_onlineBtn = nullptr;
+    QCheckBox *m_reshade = nullptr;
+    QLabel *m_modeHint = nullptr;
+    void updateLaunchOptions();
     bool m_running = false;
     qint64 m_blockLaunchUntil = 0;
 };

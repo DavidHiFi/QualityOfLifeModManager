@@ -1,0 +1,103 @@
+{
+  "schema": 1,
+  "updated": "2026-09-19",
+  "title": "Quality of Life Mod Manager",
+  "note": "Home feed. A copy ships inside the exe; the app refreshes from this file on GitHub, so mods can be added here without a release.",
+  "featured": [
+    "t6-quality-of-life",
+    "t6-zombies-declassified",
+    "t6-octagonal-ascension"
+  ],
+  "games": [
+    {
+      "id": "t6",
+      "code": "T6",
+      "name": "Black Ops II",
+      "year": 2012,
+      "icon": "https://cdn.cloudflare.steamstatic.com/steam/apps/202970/capsule_231x87.jpg",
+      "logo": "https://cdn.cloudflare.steamstatic.com/steam/apps/202970/logo.png",
+      "art": "https://cdn.cloudflare.steamstatic.com/steam/apps/202970/library_hero.jpg"
+    },
+    {
+      "id": "t4",
+      "code": "T4",
+      "name": "World at War",
+      "year": 2008,
+      "icon": "https://cdn.cloudflare.steamstatic.com/steam/apps/10090/capsule_231x87.jpg",
+      "logo": "https://cdn.cloudflare.steamstatic.com/steam/apps/10090/logo.png",
+      "art": "https://cdn.cloudflare.steamstatic.com/steam/apps/10090/library_hero.jpg"
+    },
+    {
+      "id": "t5",
+      "code": "T5",
+      "name": "Black Ops",
+      "year": 2010,
+      "icon": "https://cdn.cloudflare.steamstatic.com/steam/apps/42700/capsule_231x87.jpg",
+      "logo": "https://cdn.cloudflare.steamstatic.com/steam/apps/42700/logo.png",
+      "art": "https://cdn.cloudflare.steamstatic.com/steam/apps/42700/library_hero.jpg"
+    },
+    {
+      "id": "iw5",
+      "code": "IW5",
+      "name": "Modern Warfare 3",
+      "year": 2011,
+      "icon": "https://cdn.cloudflare.steamstatic.com/steam/apps/42690/capsule_231x87.jpg",
+      "logo": "https://cdn.cloudflare.steamstatic.com/steam/apps/42690/logo.png",
+      "art": "https://cdn.cloudflare.steamstatic.com/steam/apps/42690/library_hero.jpg"
+    }
+  ],
+  "mods": [
+    {
+      "id": "t6-quality-of-life",
+      "name": "Quality of Life",
+      "game": "t6",
+      "author": "DavidHiFi",
+      "version": "2.16.14",
+      "size": "326 MB",
+      "summary": "Quality of life changes for Black Ops II Zombies: menus, HUD, weapons and fixes, all toggleable in game.",
+      "description": "An in-game settings menu, more weapons in the Mystery Box, bonus Survival maps, chat commands and dozens of fixes. Install it from the Quality of Life page, which also handles the HD texture pack, custom sounds and controller icons.",
+      "image": "https://github.com/user-attachments/assets/32a1cfbd-7ece-4a91-9690-82691bed24b1",
+      "kind": "github",
+      "url": "https://github.com/DavidHiFi/T6-QoL",
+      "tags": [
+        "Zombies",
+        "Quality of life"
+      ]
+    },
+    {
+      "id": "t6-octagonal-ascension",
+      "name": "Octagonal Ascension BO2 REMAKE",
+      "game": "t6",
+      "author": "HD ERICK GAMES",
+      "version": "1.2",
+      "size": "143 MB",
+      "summary": "A Black Ops II remake of Ascension.",
+      "description": "A Black Ops II remake of Ascension.",
+      "image": "https://i.imgur.com/Y0deAOH.jpeg",
+      "kind": "github",
+      "url": "https://github.com/cll-mods/Octagonal-Ascension",
+      "tags": [
+        "Zombies",
+        "Custom map"
+      ]
+    },
+    {
+      "id": "t6-zombies-declassified",
+      "name": "Zombies Declassified BETA 2",
+      "game": "t6",
+      "author": "Logo2K",
+      "version": "2.0",
+      "size": "9.0 GB",
+      "summary": "A PC port of the cancelled DLC5 expansion.",
+      "description": "Nine usermaps, the menu mod and BO2 sound and zone files. Requires Black Ops II with all DLC. Installs from its own GitHub release manifest.",
+      "image": "https://i.ytimg.com/vi/8Tt5d6tu-7Y/maxresdefault.jpg",
+      "kind": "github",
+      "url": "https://github.com/Logo-2K/zombies-declassified",
+      "tags": [
+        "Zombies",
+        "DLC5",
+        "Large"
+      ]
+    }
+  ]
+}

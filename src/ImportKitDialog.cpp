@@ -1,4 +1,5 @@
 #include "ImportKitDialog.h"
+#include "Version.h"
 #include "AppSettings.h"
 #include "ArchiveTool.h"
 #include "Downloader.h"
@@ -19,7 +20,7 @@
 
 QString ImportKitDialog::puDatUrl()
 {
-    return QStringLiteral("https://github.com/MestreTM/CLL-CodLanLauncher/releases/download/v0.1/pu.dat");
+    return QStringLiteral(CLL_PU_DAT_URL);
 }
 
 QString ImportKitDialog::destPu()

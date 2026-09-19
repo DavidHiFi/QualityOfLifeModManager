@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
-project(LanLauncherQt LANGUAGES CXX)
+project(QualityOfLifeModManager LANGUAGES CXX)
 # App version lives in src/Version.h (CLL_VERSION).
 
 set(CMAKE_CXX_STANDARD 17)
@@ -43,6 +43,8 @@ set(SOURCES
     src/HomeCatalog.cpp
     src/pages/HomePage.cpp
     src/UpdateService.cpp
+    src/QolService.cpp
+    src/pages/QolPage.cpp
 )
 
 set(HEADERS
@@ -75,6 +77,8 @@ set(HEADERS
     src/HomeCatalog.h
     src/pages/HomePage.h
     src/UpdateService.h
+    src/QolService.h
+    src/pages/QolPage.h
 )
 
 qt_add_resources(QRC_SOURCES resources/resources.qrc)
@@ -96,7 +100,7 @@ if (TARGET Qt${QT_VERSION_MAJOR}::Svg)
     target_link_libraries(LanLauncherQt PRIVATE Qt${QT_VERSION_MAJOR}::Svg)
 endif()
 
-set_target_properties(LanLauncherQt PROPERTIES OUTPUT_NAME "CodLanLaucher")
+set_target_properties(LanLauncherQt PROPERTIES OUTPUT_NAME "QualityOfLifeModManager")
 
 if (WIN32)
     set_target_properties(LanLauncherQt PROPERTIES WIN32_EXECUTABLE TRUE)

@@ -1,5 +1,6 @@
 #include "SettingsPage.h"
 #include "AppSettings.h"
+#include "Version.h"
 #include "I18n.h"
 #include "ImportKitDialog.h"
 #include "../Checkables.h"
@@ -65,7 +66,7 @@ SettingsPage::SettingsPage(AppSettings &settings, QWidget *parent)
     auto *profile = makeCard(inner, tr("PERFIL"), tr("Seu nickname"),
                              QString(), &profileBody);
     m_username = new QLineEdit(settings.username, profile);
-    m_username->setPlaceholderText(tr("Ex.: MestreTM"));
+    m_username->setPlaceholderText(tr("e.g. Player"));
     m_username->setMinimumHeight(38);
     profileBody->addWidget(m_username);
     connect(m_username, &QLineEdit::textChanged, this, [this](const QString &t) { m_settings.username = t; });
@@ -381,7 +382,7 @@ void SettingsPage::retranslate()
     fill(findChild<QFrame*>("cardGames"), tr("JOGOS"), tr("Pastas de instalacao"),
          tr("Marque so os jogos que voce tem. Desmarcar nao apaga o caminho digitado."));
     if (m_username)
-        m_username->setPlaceholderText(tr("Ex.: MestreTM"));
+        m_username->setPlaceholderText(tr("e.g. Player"));
     if (m_plutonium)
         m_plutonium->setPlaceholderText(tr("Pasta do client"));
     if (auto *b = findChild<QPushButton*>("settingsPuBrowse"))

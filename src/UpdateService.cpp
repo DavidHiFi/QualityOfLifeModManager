@@ -60,7 +60,7 @@ QString sha1Of(const QString &path)
 QString displayName(const QString &id)
 {
     if (id == QLatin1String("launcher"))
-        return QCoreApplication::translate("UpdateService", "Cod Lan Launcher");
+        return QCoreApplication::translate("UpdateService", QOL_APP_NAME);
     if (id == QLatin1String("pu"))
         return QCoreApplication::translate("UpdateService", "Portable kit (pu.dat)");
     if (id == QLatin1String("t7-cll"))
@@ -127,7 +127,7 @@ bool applyItem(const UpdateService::Item &it, AppSettings &settings, QString &er
         const QString got = sha1Of(tmp);
         if (!got.isEmpty() && got.compare(it.hash, Qt::CaseInsensitive) != 0) {
             QFile::remove(tmp);
-            error = QCoreApplication::translate("UpdateService", "MD5 mismatch for %1.").arg(it.name);
+            error = QCoreApplication::translate("UpdateService", "SHA-1 mismatch for %1.").arg(it.name);
             return false;
         }
     }

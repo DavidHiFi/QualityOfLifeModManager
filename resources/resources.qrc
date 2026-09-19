@@ -9,6 +9,7 @@
         <file>icons/icon.ico</file>
         <file>icons/main.svg</file>
         <file>icons/mods.svg</file>
+        <file>icons/qol.svg</file>
         <file>icons/server.svg</file>
         <file>icons/misc.svg</file>
         <file>icons/pen.svg</file>
@@ -41,5 +42,14 @@
         <file>media/t7_icon.jpg</file>
         <file>media/t7_logo.png</file>
         <file>media/t7_bg_mp.jpg</file>
+        <file alias="qol_home.json">../qol_home.json</file>
+        <file>tools/reshade-watchdog.ps1</file>
+        <file>reshade/dxgi.dll</file>
+        <file>reshade/ReShade.ini</file>
+        <file>reshade/Cinematic Colour Grading.ini</file>
+        <file>reshade/BO1.ini</file>
+        <file>reshade/BO2.ini</file>
+        <file>reshade/MW3.ini</file>
+        <file>reshade/WAW.ini</file>
     </qresource>
 </RCC>

@@ -11,6 +11,7 @@
 
 #include "pages/PlayPage.h"
 #include "pages/HomePage.h"
+#include "pages/QolPage.h"
 #include "pages/ModsPage.h"
 #include "pages/ServerPage.h"
 #include "pages/SettingsPage.h"
@@ -102,8 +103,8 @@ MainWindow::MainWindow(QWidget *parent)
         Theme::apply(m_settings.theme);
     }
 
-    setWindowTitle(tr("Cod Lan Launcher"));
-    setWindowIcon(QIcon(":/icons/app.svg"));
+    setWindowTitle(tr(QOL_APP_NAME));
+    setWindowIcon(QIcon(":/icons/icon.ico"));
     resize(1180, 720);
     setMinimumSize(960, 600);
 
@@ -116,12 +117,14 @@ MainWindow::MainWindow(QWidget *parent)
     m_stack = new QStackedWidget(this);
     m_playPage = new PlayPage(m_settings, this);
     m_homePage = new HomePage(m_settings, this);
+    m_qolPage = new QolPage(m_settings, this);
     m_modsPage = new ModsPage(m_settings, this);
     m_serverPage = new ServerPage(m_settings, this);
     m_settingsPage = new SettingsPage(m_settings, this);
     m_aboutPage = new AboutPage(this);
     m_stack->addWidget(m_playPage);
     m_stack->addWidget(m_homePage);
+    m_stack->addWidget(m_qolPage);
     m_stack->addWidget(m_modsPage);
     m_stack->addWidget(m_serverPage);
     m_stack->addWidget(m_settingsPage);
@@ -159,6 +162,12 @@ MainWindow::MainWindow(QWidget *parent)
         m_homePage->selectGame(gameId);
     });
     connect(m_playPage, &PlayPage::launchRequested, this, &MainWindow::onLaunchGame);
+    connect(m_playPage, &PlayPage::launchOnlineRequested, this, &MainWindow::onLaunchOnline);
+    connect(m_qolPage, &QolPage::installedChanged, this, [this]() {
+        m_modsPage->refreshList();
+        if (m_homePage)
+            m_homePage->refreshInstallState();
+    });
     connect(m_playPage, &PlayPage::stopRequested, this, &MainWindow::onStopGame);
     connect(m_modsPage, &ModsPage::catalogChanged, this, [this]() {
         if (m_homePage)
@@ -166,6 +175,7 @@ MainWindow::MainWindow(QWidget *parent)
     });
     connect(m_settingsPage, &SettingsPage::plutoniumFolderChanged, this, [this]() {
         m_modsPage->refreshList();
+        m_qolPage->refresh();
         m_serverPage->refreshList();
         if (m_homePage)
             m_homePage->refreshInstallState();
@@ -205,9 +215,9 @@ MainWindow::MainWindow(QWidget *parent)
 
 void MainWindow::retranslate()
 {
-    setWindowTitle(tr("Cod Lan Launcher"));
+    setWindowTitle(tr(QOL_APP_NAME));
     if (m_sidebarBy)
-        m_sidebarBy->setText(tr("por MestreTM"));
+        m_sidebarBy->setText(QStringLiteral(QOL_BRAND_SUBTITLE));
     if (m_sidebarGames)
         m_sidebarGames->setText(tr("JOGOS"));
     if (m_sidebarTools)
@@ -215,10 +225,11 @@ void MainWindow::retranslate()
     if (m_saveBtn)
         m_saveBtn->setText(tr("Salvar"));
     const QStringList tools = {
-        tr("Mods"), tr("Servidor LAN (beta)"), tr("Configuracoes"), tr("Sobre")
+        tr("Quality of Life"), tr("Mods"), tr("Servidor LAN (beta)"), tr("Configuracoes"), tr("Sobre")
     };
     for (int i = 0; i < m_toolButtons.size() && i < tools.size(); ++i)
         m_toolButtons[i]->setText("  " + tools[i]);
+    if (m_qolPage) m_qolPage->retranslate();
     applyHeader(m_toolIndex);
     if (m_homeNavBtn) m_homeNavBtn->setText("  " + tr("Início"));
     if (m_editGamesBtn) m_editGamesBtn->setToolTip(tr("Reorganizar jogos"));
@@ -245,9 +256,9 @@ QWidget *MainWindow::buildSidebar()
     logo->setLogoSize(38);
     auto *titles = new QVBoxLayout();
     titles->setSpacing(0);
-    auto *name = new QLabel(tr("Cod Lan Launcher"), sidebar);
+    auto *name = new QLabel(QStringLiteral(QOL_BRAND_TITLE), sidebar);
     name->setObjectName("SidebarTitle");
-    m_sidebarBy = new QLabel(tr("por MestreTM"), sidebar);
+    m_sidebarBy = new QLabel(QStringLiteral(QOL_BRAND_SUBTITLE), sidebar);
     m_sidebarBy->setObjectName("SidebarSubtitle");
     titles->addWidget(name);
     titles->addWidget(m_sidebarBy);
@@ -357,13 +368,14 @@ QWidget *MainWindow::buildSidebar()
 
     struct Tool { QString text; QString icon; };
     const QList<Tool> tools = {
+        {tr("Quality of Life"), ":/icons/qol.svg"},
         {tr("Mods"), ":/icons/mods.svg"},
         {tr("Servidor LAN (beta)"), ":/icons/server.svg"},
         {tr("Configuracoes"), ":/icons/misc.svg"},
-        {tr("Sobre"), ":/icons/app.svg"},
+        {tr("Sobre"), ":/icons/icon.ico"},
     };
     for (int i = 0; i < tools.size(); ++i) {
-        const bool rawIcon = (tools[i].icon == QLatin1String(":/icons/app.svg"));
+        const bool rawIcon = (tools[i].icon == QLatin1String(":/icons/icon.ico"));
         auto *btn = new QPushButton(rawIcon ? QIcon(tools[i].icon) : Theme::icon(tools[i].icon),
                                     "  " + tools[i].text, sidebar);
         btn->setProperty("iconPath", tools[i].icon);
@@ -374,7 +386,7 @@ QWidget *MainWindow::buildSidebar()
         btn->setCursor(Qt::PointingHandCursor);
         layout->addWidget(btn);
         m_toolButtons << btn;
-        connect(btn, &QPushButton::clicked, this, [this, i]() { showTool(i + 2); });
+        connect(btn, &QPushButton::clicked, this, [this, i]() { showTool(i + kFirstTool); });
     }
 
     layout->addStretch();
@@ -396,9 +408,9 @@ QWidget *MainWindow::buildSidebar()
     auto *repo = new QPushButton(QStringLiteral("GitHub"), foot);
     repo->setObjectName("RepoLink");
     repo->setCursor(Qt::PointingHandCursor);
-    repo->setToolTip(QStringLiteral("https://github.com/MestreTM/CLL-CodLanLauncher"));
+    repo->setToolTip(QStringLiteral(QOL_REPO_URL));
     QObject::connect(repo, &QPushButton::clicked, foot, []() {
-        QDesktopServices::openUrl(QUrl(QStringLiteral("https://github.com/MestreTM/CLL-CodLanLauncher")));
+        QDesktopServices::openUrl(QUrl(QStringLiteral(QOL_REPO_URL)));
     });
     fl->addWidget(ver);
     fl->addWidget(repo);
@@ -448,6 +460,9 @@ void MainWindow::applyHeader(int toolIndex)
     switch (toolIndex) {
     case ToolHome:
         info = {tr("Início"), tr("Descubra mods e mapas por jogo."), false};
+        break;
+    case ToolQol:
+        info = {tr("Quality of Life"), tr("The series: install, update and remove each game's mod and its extras."), false};
         break;
     case ToolMods:
         info = {tr("Mods"), tr("Instale pacotes e mapas customizados por jogo."), false};
@@ -503,7 +518,9 @@ void MainWindow::showTool(int toolIndex)
     const QString gameId = (m_gameIndex >= 0 && m_gameIndex < m_gameButtons.size())
                                ? m_gameButtons[m_gameIndex]->property("gameId").toString()
                                : QString();
-    if (toolIndex == ToolMods)
+    if (toolIndex == ToolQol)
+        m_qolPage->refresh();
+    else if (toolIndex == ToolMods)
         m_modsPage->selectGame(gameId);
     else if (toolIndex == ToolServer)
         m_serverPage->selectGame(gameId);
@@ -521,7 +538,7 @@ void MainWindow::syncNav()
     for (int i = 0; i < m_gameButtons.size(); ++i)
         m_gameButtons[i]->setChecked(m_toolIndex == ToolPlay && i == m_gameIndex);
     for (int i = 0; i < m_toolButtons.size(); ++i)
-        m_toolButtons[i]->setChecked(m_toolIndex == i + 2);
+        m_toolButtons[i]->setChecked(m_toolIndex == i + kFirstTool);
 }
 
 void MainWindow::onLaunchGame(const QString &gameId, const QString &mode)
@@ -547,13 +564,49 @@ void MainWindow::onLaunchGame(const QString &gameId, const QString &mode)
 
     const GameLauncher::Result result = GameLauncher::launch(m_settings, m_modsPage->selectedMod());
     if (result.hasError) {
-        Dialogs::info(this, result.errorMsg, m_settings);
+        if (!result.errorText.isEmpty())
+            Dialogs::error(this, result.errorText);
+        else
+            Dialogs::info(this, result.errorMsg, m_settings);
         return;
+    }
+    if (m_settings.launchReShade) {
+        QString err;
+        if (!GameLauncher::startReShadeWatchdog(m_settings.plutoniumInstance, err))
+            Dialogs::error(this, err);
     }
     m_runningPid = result.pid;
     m_runningGameId = gameId;
     m_playPage->setRunning(true);
     m_processPollTimer.start();
+}
+
+void MainWindow::onLaunchOnline(const QString &gameId, const QString &mode)
+{
+    if (m_runningPid > 0)
+        return;
+    if (gameId == "World at War") m_settings.modeId = (mode == QLatin1String("mp")) ? "t4mp" : "t4sp";
+    else if (gameId == "Black ops") m_settings.modeId = (mode == QLatin1String("mp")) ? "t5mp" : "t5sp";
+    else if (gameId == "Black ops II") m_settings.modeId = (mode == QLatin1String("mp")) ? "t6mp" : "t6zm";
+    else if (gameId == "Modern Warfare 3") m_settings.modeId = "iw5mp";
+    else m_settings.modeId.clear();
+    m_settings.gameId = gameId;
+    m_settings.saveToIni();
+
+    const GameLauncher::Result result = GameLauncher::launchOnline(m_settings);
+    if (result.hasError) {
+        if (!result.errorText.isEmpty())
+            Dialogs::error(this, result.errorText);
+        else
+            Dialogs::info(this, result.errorMsg, m_settings);
+        return;
+    }
+    if (m_settings.launchReShade) {
+        QString err;
+        if (!GameLauncher::startReShadeWatchdog(m_settings.plutoniumInstance, err))
+            Dialogs::error(this, err);
+    }
+    // The launcher owns the process from here; there is no pid to poll.
 }
 
 void MainWindow::onStopGame(const QString &)

@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Build cll_update.json from GitHub latest releases (and optional local files).
+"""Build qol_update.json from GitHub latest releases (and optional local files).
 
-Output is consumed by the launcher from:
-  https://mestretm.github.io/CLL-Cod-Lan-Launcher/cll_update.json
+Output is consumed by the app from:
+  https://raw.githubusercontent.com/DavidHiFi/QualityOfLifeModManager/main/qol_update.json
 
 Archives are hashed as the parent; every unpacked file is listed as a child.
 """
@@ -22,15 +22,15 @@ import urllib.request
 import zipfile
 from pathlib import Path
 
-UA = "CLL-update-gen/1.1"
-HOSTED = "https://mestretm.github.io/CLL-Cod-Lan-Launcher/cll_update.json"
+UA = "QoL-update-gen/2.0"
+HOSTED = "https://raw.githubusercontent.com/DavidHiFi/QualityOfLifeModManager/main/qol_update.json"
 
 # id, repo, asset name on the latest release, kind
 CATALOG = [
     {
         "id": "launcher",
-        "repo": "MestreTM/CLL-Cod-Lan-Launcher",
-        "asset": "CodLanLauncher.exe",
+        "repo": "DavidHiFi/QualityOfLifeModManager",
+        "asset": "QualityOfLifeModManager.exe",
         "kind": "file",
     },
     {
@@ -274,8 +274,8 @@ def parse_overrides(pairs: list[str]) -> dict[str, Path]:
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser(description="Generate cll_update.json")
-    ap.add_argument("-o", "--out", default="cll_update.json")
+    ap = argparse.ArgumentParser(description="Generate qol_update.json")
+    ap.add_argument("-o", "--out", default="qol_update.json")
     ap.add_argument("--cache", default=".cll_update_cache")
     ap.add_argument(
         "--local",

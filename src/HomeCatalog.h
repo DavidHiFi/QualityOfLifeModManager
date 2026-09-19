@@ -4,7 +4,7 @@
 #include <QString>
 #include <QStringList>
 
-// Home catalog from https://mestretm.github.io/CLL-Cod-Lan-Launcher/cll_home.json
+// Home catalog from QOL_HOME_FEED_URL (see Version.h); same schema as CLL's cll_home.json.
 namespace HomeCatalog
 {
 

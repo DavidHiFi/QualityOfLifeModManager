@@ -1,4 +1,5 @@
 #include "SetupWizard.h"
+#include "Version.h"
 #include "AnimatedLogo.h"
 #include "AppSettings.h"
 #include "ArchiveTool.h"
@@ -35,14 +36,14 @@
 #include <QtConcurrent/QtConcurrent>
 
 namespace {
-const char kPuDatUrl[] = "https://github.com/MestreTM/CLL-CodLanLauncher/releases/download/v0.1/pu.dat";
+const char kPuDatUrl[] = CLL_PU_DAT_URL;
 }
 
 SetupWizard::SetupWizard(AppSettings &settings, QWidget *parent)
     : QDialog(parent)
     , m_settings(settings)
 {
-    setWindowTitle(tr("Cod Lan Launcher — configuracao"));
+    setWindowTitle(tr("%1 - setup").arg(QOL_APP_NAME));
     setWindowIcon(QIcon(":/icons/app.svg"));
     setModal(true);
     resize(720, 560);
@@ -67,7 +68,7 @@ void SetupWizard::buildUi()
     auto *logo = new AnimatedLogo(header);
     logo->setLogoSize(56);
     auto *col = new QVBoxLayout();
-    m_headerTitle = new QLabel(tr("Bem-vindo ao Cod Lan Launcher"), header);
+    m_headerTitle = new QLabel(tr("Welcome to %1").arg(QOL_APP_NAME), header);
     m_headerTitle->setObjectName("WizardTitle");
     m_headerSub = new QLabel(tr("setup inicial"), header);
     m_headerSub->setObjectName("WizardSub");
@@ -435,7 +436,7 @@ QWidget *SetupWizard::buildNickPage()
     lay->addWidget(m_nickLead);
     m_nickDesc = nullptr;
     m_nickEdit = new QLineEdit(m_settings.username, page);
-    m_nickEdit->setPlaceholderText(tr("Ex.: MestreTM"));
+    m_nickEdit->setPlaceholderText(tr("e.g. Player"));
     m_nickEdit->setMinimumHeight(42);
     lay->addWidget(m_nickEdit);
     lay->addStretch();
@@ -680,9 +681,9 @@ void SetupWizard::onLanguageChanged()
 
 void SetupWizard::retranslate()
 {
-    setWindowTitle(tr("Cod Lan Launcher — configuracao"));
+    setWindowTitle(tr("%1 - setup").arg(QOL_APP_NAME));
     if (m_headerTitle)
-        m_headerTitle->setText(tr("Bem-vindo ao Cod Lan Launcher"));
+        m_headerTitle->setText(tr("Welcome to %1").arg(QOL_APP_NAME));
     if (m_headerSub)
         m_headerSub->setText(tr("setup inicial"));
     if (m_langLabel)
@@ -721,7 +722,7 @@ void SetupWizard::retranslate()
     if (m_nickLead)
         m_nickLead->setText(tr("Defina seu Nickname"));
     if (m_nickEdit)
-        m_nickEdit->setPlaceholderText(tr("Ex.: MestreTM"));
+        m_nickEdit->setPlaceholderText(tr("e.g. Player"));
     if (m_gamesLead)
         m_gamesLead->setText(tr("Seus jogos"));
     if (m_rescanBtn)

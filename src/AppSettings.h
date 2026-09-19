@@ -2,7 +2,7 @@
 #include <QString>
 #include <QStringList>
 
-// Settings stored in LanLauncher.ini plus session state.
+// Settings stored in QualityOfLife.ini (next to the exe) plus session state.
 class AppSettings
 {
 public:
@@ -26,6 +26,9 @@ public:
     QStringList gameOrder;
     bool gameOrderHintSeen = false;
     bool checkUpdatesOnStart = true;
+    // Play page launch options (persisted).
+    bool launchOnline = false;   // false = LAN (bootstrapper), true = plutonium://play/<id> through the launcher
+    bool launchReShade = false;  // start the ReShade watchdog beside the game
 
     QString modId;
     QString gameId;

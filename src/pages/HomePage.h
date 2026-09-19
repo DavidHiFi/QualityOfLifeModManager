@@ -16,7 +16,7 @@ class AppSettings;
 class HeroSlider;
 
 // Home: slider de destaques + mods agrupados por jogo, alimentada por
-// cll_home.json. Mesma linguagem visual das outras paginas (dark.qss).
+// qol_home.json. Same visual language as the other pages (base.qss).
 class HomePage : public QWidget
 {
     Q_OBJECT

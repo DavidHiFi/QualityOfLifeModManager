@@ -15,6 +15,7 @@ class ServerPage;
 class SettingsPage;
 class AboutPage;
 class HomePage;
+class QolPage;
 
 class MainWindow : public QMainWindow
 {
@@ -25,6 +26,7 @@ public:
 
 private slots:
     void onLaunchGame(const QString &gameId, const QString &mode);
+    void onLaunchOnline(const QString &gameId, const QString &mode);
     void onStopGame(const QString &gameId);
     void onLaunchServer(const QString &configSelection, const QString &port);
     void onStopServer();
@@ -32,7 +34,8 @@ private slots:
     void onPollRunningProcess();
 
 private:
-    enum ToolIndex { ToolPlay = 0, ToolHome, ToolMods, ToolServer, ToolSettings, ToolAbout };
+    enum ToolIndex { ToolPlay = 0, ToolHome, ToolQol, ToolMods, ToolServer, ToolSettings, ToolAbout };
+    static constexpr int kFirstTool = ToolQol; // sidebar tool buttons start here
 
     QWidget *buildSidebar();
     QWidget *buildHeader();
@@ -52,6 +55,7 @@ private:
     QStackedWidget *m_stack = nullptr;
     PlayPage *m_playPage = nullptr;
     HomePage *m_homePage = nullptr;
+    QolPage *m_qolPage = nullptr;
     ModsPage *m_modsPage = nullptr;
     ServerPage *m_serverPage = nullptr;
     SettingsPage *m_settingsPage = nullptr;

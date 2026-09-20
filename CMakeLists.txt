@@ -17,6 +17,8 @@ set(SOURCES
     src/AppSettings.cpp
     src/Storage.cpp
     src/GameLauncher.cpp
+    src/PlutoniumAuth.cpp
+    src/LoginDialog.cpp
     src/ConfigMaker.cpp
     src/ArchiveTool.cpp
     src/Downloader.cpp
@@ -51,6 +53,8 @@ set(HEADERS
     src/AppSettings.h
     src/Storage.h
     src/GameLauncher.h
+    src/PlutoniumAuth.h
+    src/LoginDialog.h
     src/ConfigMaker.h
     src/ArchiveTool.h
     src/Downloader.h
@@ -114,6 +118,11 @@ if (WIN32)
     else()
         message(WARNING "resources/icons/icon.ico not found — exe will have the default icon")
     endif()
+endif()
+
+if (WIN32)
+    # crypt32: DPAPI, for the saved Plutonium account token (PlutoniumAuth).
+    target_link_libraries(LanLauncherQt PRIVATE crypt32)
 endif()
 
 if (MINGW)

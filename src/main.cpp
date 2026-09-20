@@ -4,6 +4,7 @@
 #include "Theme.h"
 #include "MainWindow.h"
 #include "QolService.h"
+#include "PlutoniumAuth.h"
 
 #include <QApplication>
 #include <QGuiApplication>
@@ -50,11 +51,22 @@ int runNoGui(AppSettings &settings, const QCommandLineParser &parser)
         return 1;
     }
 
-    const GameLauncher::Result result = GameLauncher::launch(settings, QString());
+    QTextStream out(stdout);
+    const bool online = parser.isSet("online");
+    const GameLauncher::Result result = online
+                                            ? GameLauncher::launchOnline(settings)
+                                            : GameLauncher::launch(settings, QString());
     if (result.hasError) {
-        QTextStream(stdout) << QOL_APP_NAME ": launch failed (check " QOL_INI_NAME " and the arguments).\n";
+        if (!result.errorText.isEmpty())
+            out << QOL_APP_NAME ": " << result.errorText << Qt::endl;
+        else
+            out << QOL_APP_NAME ": launch failed (check " QOL_INI_NAME " and the arguments)." << Qt::endl;
+        if (result.needsLogin)
+            out << "No Plutonium account is signed in. Start the app and press Play online once." << Qt::endl;
         return 1;
     }
+    out << QOL_APP_NAME ": started " << settings.modeId << (online ? " online" : " on LAN")
+        << ", pid " << result.pid << Qt::endl;
     return 0;
 }
 
@@ -86,6 +98,8 @@ int main(int argc, char *argv[])
     parser.addOption({"gamedir", "Local em que o jogo esta instalado. Deve ser usado com -nogui.", "gamedir"});
     parser.addOption({"gameid", "ID do jogo: T4, T5, T6, ou IW5. Deve ser usado com -nogui.", "gameid"});
     parser.addOption({"nogui", "Lanca sem interface grafica."});
+    parser.addOption({"online", "With -nogui: play online (signs the launch with the saved Plutonium "
+                                "account) instead of LAN."});
     parser.addOption({"selftest", "Offline checks against -plutoniumdir (ReShade install/remove, watchdog unpack, "
                                   "online handler probe); prints one line per check and exits non-zero on failure."});
     parser.process(app);
@@ -103,8 +117,16 @@ int main(int argc, char *argv[])
             out.flush();
             if (!ok) ++failures;
         };
+        auto note = [&](const QString &name, const QString &detail) {
+            out << "INFO " << name << " - " << detail << Qt::endl;
+        };
         check("plutonium root", AppSettings::isPlutoniumRoot(settings.plutoniumInstance), settings.plutoniumInstance);
-        check("online handler registered", GameLauncher::onlineHandlerRegistered());
+        // Online play no longer needs the launcher or its protocol handler, so
+        // these are reported, never failed: a PC with neither still plays online.
+        note("plutonium:// handler (not required)",
+             GameLauncher::onlineHandlerRegistered() ? "registered" : "absent");
+        note("plutonium account", PlutoniumAuth::accountSummary(
+                 PlutoniumAuth::tokenRoot(settings.plutoniumInstance)));
         QString err;
         check("reshade install", QolService::installReShade(settings, err), err);
         check("reshade dxgi present", QolService::reShadeInstalled(settings));

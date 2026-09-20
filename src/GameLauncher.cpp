@@ -1,5 +1,6 @@
 #include "GameLauncher.h"
 #include "AppSettings.h"
+#include "PlutoniumAuth.h"
 #include "SmartModInstaller.h"
 #include "Storage.h"
 
@@ -34,6 +35,38 @@ std::atomic<qint64> g_errorWatchPid{0};
 QStringList splitFlag(const QString &flag)
 {
     return flag.split(' ', Qt::SkipEmptyParts);
+}
+
+// Points settings.activeGame at the folder for settings.gameId and checks the
+// one file that proves the install is really there. Shared by LAN and online so
+// the two can never disagree about where a game lives.
+bool resolvePlutoGameFolder(AppSettings &settings, GameLauncher::Result &r)
+{
+    QString probe;
+    if (settings.gameId == "World at War") {
+        settings.activeGame = settings.waw;
+        probe = "/main/iw_00.iwd";
+        r.errorMsg = Dialogs::Msg::T4;
+    } else if (settings.gameId == "Black ops") {
+        settings.activeGame = settings.bo1;
+        probe = "/main/iw_00.iwd";
+        r.errorMsg = Dialogs::Msg::T5;
+    } else if (settings.gameId == "Black ops II") {
+        settings.activeGame = settings.bo2;
+        probe = "/zone/all/base.ipak";
+        r.errorMsg = Dialogs::Msg::T6;
+    } else if (settings.gameId == "Modern Warfare 3") {
+        settings.activeGame = settings.mw3;
+        probe = "/main/iw_00.iwd";
+        r.errorMsg = Dialogs::Msg::IW5;
+    } else {
+        return true; // not a Plutonium game; caller handled it already
+    }
+    if (settings.activeGame.isEmpty() || !QFileInfo::exists(settings.activeGame + probe)) {
+        r.hasError = true;
+        return false;
+    }
+    return true;
 }
 
 } // namespace
@@ -129,27 +162,8 @@ Result launch(AppSettings &settings, const QString &modSelection)
         return r;
     }
 
-    if (settings.gameId == "World at War") {
-        settings.activeGame = settings.waw;
-        if (!QFileInfo::exists(settings.activeGame + "/main/iw_00.iwd")) {
-            r.hasError = true; r.errorMsg = Dialogs::Msg::T4; return r;
-        }
-    } else if (settings.gameId == "Black ops") {
-        settings.activeGame = settings.bo1;
-        if (!QFileInfo::exists(settings.activeGame + "/main/iw_00.iwd")) {
-            r.hasError = true; r.errorMsg = Dialogs::Msg::T5; return r;
-        }
-    } else if (settings.gameId == "Black ops II") {
-        settings.activeGame = settings.bo2;
-        if (!QFileInfo::exists(settings.activeGame + "/zone/all/base.ipak")) {
-            r.hasError = true; r.errorMsg = Dialogs::Msg::T6; return r;
-        }
-    } else if (settings.gameId == "Modern Warfare 3") {
-        settings.activeGame = settings.mw3;
-        if (!QFileInfo::exists(settings.activeGame + "/main/iw_00.iwd")) {
-            r.hasError = true; r.errorMsg = Dialogs::Msg::IW5; return r;
-        }
-    }
+    if (!resolvePlutoGameFolder(settings, r))
+        return r;
 
     QStringList args;
     args << settings.modeId << settings.activeGame << "+name" << settings.username << "-lan";
@@ -217,31 +231,56 @@ Result launchOnline(AppSettings &settings)
         r.errorText = QObject::tr("Online launch is only available for the Plutonium games.");
         return r;
     }
-    // The handler always starts the registered install (%LOCALAPPDATA%\Plutonium).
-    // Refuse when the app is pointed somewhere else, or the user would play from a
-    // different folder than the one they configured.
-    const QString official = QDir::cleanPath(AppSettings::officialPlutoniumDir()).toLower();
-    const QString chosen = QDir::cleanPath(settings.plutoniumInstance).toLower();
-    if (chosen != official) {
+
+    const QString bootstrapper = settings.plutoniumInstance + kExePath;
+    if (!QFileInfo::exists(bootstrapper)) {
         r.hasError = true;
-        r.errorText = QObject::tr("Online play always uses the Plutonium installed in %1.\n"
-                                  "Point Settings at that folder, or play in LAN mode from the current one.")
-                          .arg(QDir::toNativeSeparators(AppSettings::officialPlutoniumDir()));
+        r.errorMsg = Dialogs::Msg::Plutonium;
         return r;
     }
-    if (!onlineHandlerRegistered()) {
+    if (!resolvePlutoGameFolder(settings, r))
+        return r;
+
+    // The bootstrapper has no login of its own: it wants a session token minted
+    // from the account, and without one it dies on "Could not authenticate to
+    // Plutonium". The official launcher does exactly this and then execs the
+    // bootstrapper, so we do it directly and skip the launcher window entirely.
+    QString error;
+    const QString authRoot = PlutoniumAuth::tokenRoot(settings.plutoniumInstance);
+    const QString userToken = PlutoniumAuth::savedToken(authRoot, &error);
+    if (userToken.isEmpty()) {
         r.hasError = true;
-        r.errorText = QObject::tr("The Plutonium launcher is not registered on this PC.\n"
-                                  "Install Plutonium from plutonium.pw and run it once, then try again.");
+        r.needsLogin = true;
+        r.errorText = error;
         return r;
     }
-    if (!QDesktopServices::openUrl(QUrl(QStringLiteral("plutonium://play/") + settings.modeId))) {
+
+    const QString session = PlutoniumAuth::createSession(userToken, settings.modeId, &error);
+    if (session.isEmpty()) {
         r.hasError = true;
-        r.errorText = QObject::tr("Windows refused to open plutonium://play/%1.").arg(settings.modeId);
+        // An expired or revoked token is a sign-in problem, not a launch problem;
+        // let the caller offer the sign-in box instead of a dead end.
+        const PlutoniumAuth::Account account = PlutoniumAuth::validate(userToken);
+        r.needsLogin = !account.ok;
+        r.errorText = error.isEmpty()
+                          ? QObject::tr("Plutonium would not start an online session.")
+                          : error;
+        return r;
+    }
+
+    // Same argv the launcher builds. Online takes no extra parameters: the
+    // account supplies the name, and fs_game is a LAN-only mechanism.
+    const QStringList args{settings.modeId, settings.activeGame,
+                           QStringLiteral("-token"), session};
+
+    qint64 pid = 0;
+    if (!QProcess::startDetached(bootstrapper, args, settings.plutoniumInstance, &pid)) {
+        r.hasError = true;
+        r.errorMsg = Dialogs::Msg::Plutonium;
         return r;
     }
     r.ok = true;
-    r.onlineHandoff = true;
+    r.pid = pid;
     return r;
 }
 

@@ -72,8 +72,8 @@ PlayPage::PlayPage(AppSettings &settings, QWidget *parent)
     root->addWidget(m_path);
     root->addSpacing(18);
 
-    // Launch options: LAN (bootstrapper, the mod can be pre-loaded) or Online
-    // (Plutonium's own launcher does the login), plus ReShade beside either.
+    // Launch options: LAN (no login, the mod can be pre-loaded) or Online (we
+    // sign the launch with the saved Plutonium account), plus ReShade beside either.
     auto *opts = new QHBoxLayout();
     opts->setSpacing(0);
     m_lanBtn = new QPushButton(tr("LAN"), this);
@@ -282,7 +282,7 @@ void PlayPage::updateLaunchOptions()
     const bool reshadeReady = GameLauncher::reShadeInstalled(m_settings.plutoniumInstance);
     QString hint;
     if (online)
-        hint = tr("Plutonium's launcher signs in and starts the game. Pick a mod from its Mods menu in game.");
+        hint = tr("Signs in with your Plutonium account and starts the game straight away, with no launcher. Mods are LAN only.");
     else if (!m_selectedMod.isEmpty())
         hint = tr("No login needed. Loads %1 (selected on the Mods page).").arg(m_selectedMod);
     else

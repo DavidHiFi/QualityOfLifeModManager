@@ -15,15 +15,17 @@ namespace GameLauncher
         QString errorText;   // when non-empty, shown instead of errorMsg
         bool needsBo2GameSettings = false;
         qint64 pid = 0;
-        bool onlineHandoff = false; // launched through plutonium://; no pid to track
+        bool needsLogin = false;    // no usable Plutonium account; offer sign-in and retry
     };
 
     Result launch(AppSettings &settings, const QString &modSelection);
 
-    // Online launch through the registered plutonium://play/<modeId> handler.
-    // The Plutonium launcher does the login; the bootstrapper alone answers
-    // "Could not authenticate (401)". Only the registered install can be used,
-    // and a mod cannot be pre-loaded (fs_game is a LAN-only mechanism).
+    // Online launch straight into the bootstrapper. We mint the session token
+    // from the signed-in account ourselves (PlutoniumAuth), which is the step
+    // the official launcher exists to perform, so no launcher window appears
+    // and the bootstrapper never answers "Could not authenticate". Sets
+    // needsLogin when no account is signed in. A mod cannot be pre-loaded
+    // online; fs_game is a LAN-only mechanism.
     Result launchOnline(AppSettings &settings);
     bool onlineHandlerRegistered();
 

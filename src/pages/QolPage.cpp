@@ -180,6 +180,18 @@ QolPage::QolPage(AppSettings &settings, QWidget *parent)
     refresh();
 }
 
+bool QolPage::installSeriesMod(const QString &gameCode)
+{
+    const QolService::SeriesMod m = QolService::seriesFor(gameCode);
+    if (!m.released)
+        return false;
+    runJob(tr("Installing Quality of Life for %1").arg(m.gameTitle),
+           [this, m](QString &err, const std::function<void(const QString &, int)> &p) {
+               return QolService::installMod(m_settings, m, p, err);
+           });
+    return true;
+}
+
 QolPage::Row QolPage::addRow(QVBoxLayout *into, const QString &kicker, const QString &title, const QString &desc)
 {
     Row r;

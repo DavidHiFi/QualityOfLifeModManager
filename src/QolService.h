@@ -19,6 +19,9 @@ namespace QolService
         QString folder;     // zm_qol (mods folder name), empty when not released
         bool released = false;
     };
+    // Name of a running Plutonium game process, or empty. Installs refuse while one runs.
+    QString runningGame();
+
     QList<SeriesMod> series();
     SeriesMod seriesFor(const QString &gameCode);
 

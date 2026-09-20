@@ -1,6 +1,7 @@
 #include "AppSettings.h"
 #include "Version.h"
 #include "I18n.h"
+#include "SteamDetector.h"
 
 #include <QCoreApplication>
 #include <QDir>
@@ -210,6 +211,29 @@ AppSettings AppSettings::loadForStartup()
     s.resolveStoredPaths();
     s.useLocalPuIfPresent();
     s.applyDefaultPlutoniumInstanceIfEmpty();
+    s.fillGameFoldersFromSteam();
     s.resolveStoredPaths();
     return s;
+}
+
+// Fills any game folder still empty from the Steam libraries, the same
+// detection the first-run wizard uses. Never overwrites a folder the user set.
+void AppSettings::fillGameFoldersFromSteam()
+{
+    bool any = false;
+    for (const auto &hit : SteamDetector::detectInstalledGames()) {
+        QString *field = nullptr;
+        if (hit.gameId == QLatin1String("World at War"))        field = &waw;
+        else if (hit.gameId == QLatin1String("Black ops"))      field = &bo1;
+        else if (hit.gameId == QLatin1String("Black ops II"))   field = &bo2;
+        else if (hit.gameId == QLatin1String("Modern Warfare 3")) field = &mw3;
+        else if (hit.gameId == QLatin1String("Advanced Warfare")) field = &aw;
+        else if (hit.gameId == QLatin1String("Black ops III"))  field = &bo3;
+        if (field && field->trimmed().isEmpty()) {
+            *field = hit.path;
+            any = true;
+        }
+    }
+    if (any && setupCompleted)
+        saveToIni();
 }

@@ -2,6 +2,7 @@
 #include "AppSettings.h"
 #include "ArchiveTool.h"
 #include "Downloader.h"
+#include "GameLauncher.h"
 #include "Version.h"
 
 #include <QCoreApplication>
@@ -210,6 +211,20 @@ QString findModDir(const QString &root)
 
 namespace QolService {
 
+QString runningGame()
+{
+    // A running Plutonium game holds mod.iwd and the sound banks open, so any
+    // install into storage would fail half-way. Same guard the 1.x app had.
+    static const char *const kNames[] = {"plutonium-bootstrapper-win32.exe", "t6zm.exe", "t6mp.exe",
+                                         "t5sp.exe", "t5mp.exe", "t4sp.exe", "t4mp.exe", "iw5mp.exe"};
+    for (const char *name : kNames) {
+        const QString n = QString::fromLatin1(name);
+        if (GameLauncher::findProcessByName(n) > 0)
+            return n;
+    }
+    return QString();
+}
+
 QList<SeriesMod> series()
 {
     return {
@@ -268,6 +283,10 @@ bool installMod(const AppSettings &s, const SeriesMod &m, const Progress &p, QSt
         error = QObject::tr("%1 has no release yet.").arg(m.gameTitle);
         return false;
     }
+    if (const QString g = runningGame(); !g.isEmpty()) {
+        error = QObject::tr("Close Plutonium first (%1 is running). The game keeps the mod files open while it runs.").arg(g);
+        return false;
+    }
     if (p) p(QObject::tr("Looking up the latest release..."), 2);
     const QJsonArray rels = githubReleases(m.repo, error);
     if (rels.isEmpty())
@@ -289,17 +308,40 @@ bool installMod(const AppSettings &s, const SeriesMod &m, const Progress &p, QSt
     if (p) p(QObject::tr("Installing %1...").arg(m.folder), 85);
     const QString dest = QDir(modsDir(s, m.gameCode)).filePath(m.folder);
     QDir().mkpath(dest);
-    for (const QString &old : QDir(dest).entryList({"*.ff", "*.iwd", "*.json", "*.sabl", "*.sabs"}, QDir::Files))
-        QFile::remove(QDir(dest).filePath(old));
+    // Copy beside the live files first, then swap, so a failure mid-way
+    // leaves the previous install intact.
+    QStringList staged;
+    bool ok = true;
     for (const QString &f : kModFiles) {
-        if (!QFile::copy(QDir(src).filePath(f), QDir(dest).filePath(f))) {
-            error = QObject::tr("Could not copy %1").arg(f);
-            return false;
+        const QString tmp = QDir(dest).filePath(f + QStringLiteral(".new"));
+        QFile::remove(tmp);
+        if (!QFile::copy(QDir(src).filePath(f), tmp)) {
+            error = QObject::tr("Could not copy %1 into %2").arg(f, QDir::toNativeSeparators(dest));
+            ok = false;
+            break;
+        }
+        staged << tmp;
+    }
+    if (ok) {
+        for (const QString &f : kModFiles) {
+            const QString live = QDir(dest).filePath(f);
+            if (QFileInfo::exists(live) && !QFile::remove(live)) {
+                error = QObject::tr("%1 is in use; close the game and try again.").arg(f);
+                ok = false;
+                break;
+            }
+            if (!QFile::rename(live + QStringLiteral(".new"), live)) {
+                error = QObject::tr("Could not replace %1").arg(f);
+                ok = false;
+                break;
+            }
         }
     }
-    QDir(unpacked).removeRecursively();
-    if (p) p(QObject::tr("Done"), 100);
-    return true;
+    if (!ok)
+        for (const QString &t : staged) QFile::remove(t);
+    QDir(QFileInfo(unpacked).absolutePath()).removeRecursively();
+    if (ok && p) p(QObject::tr("Done"), 100);
+    return ok;
 }
 
 namespace {
@@ -314,6 +356,10 @@ bool packInstalled(const AppSettings &s, Pack pack)
 
 bool installPack(const AppSettings &s, Pack pack, const Progress &p, QString &error)
 {
+    if (const QString g = runningGame(); !g.isEmpty()) {
+        error = QObject::tr("Close Plutonium first (%1 is running). The game keeps the mod files open while it runs.").arg(g);
+        return false;
+    }
     const SeriesMod t6 = seriesFor(QStringLiteral("t6"));
     if (p) p(QObject::tr("Looking up the latest release..."), 2);
     const QJsonArray rels = githubReleases(t6.repo, error);
@@ -361,6 +407,10 @@ QString installedController(const AppSettings &s)
 
 bool installController(const AppSettings &s, const QString &pack, const Progress &p, QString &error)
 {
+    if (const QString g = runningGame(); !g.isEmpty()) {
+        error = QObject::tr("Close Plutonium first (%1 is running). The game keeps the mod files open while it runs.").arg(g);
+        return false;
+    }
     const QString folderName = pack == QLatin1String("ps5")    ? QStringLiteral("Dualsense Icons")
                              : pack == QLatin1String("switch") ? QStringLiteral("Nintendo Switch Icons")
                                                                : QStringLiteral("Xbox One Buttons");
@@ -447,6 +497,10 @@ bool reShadeInstalled(const AppSettings &s)
 
 bool installReShade(const AppSettings &s, QString &error)
 {
+    if (const QString g = runningGame(); !g.isEmpty()) {
+        error = QObject::tr("Close Plutonium first (%1 is running).").arg(g);
+        return false;
+    }
     const QString bin = QDir(s.plutoniumInstance).filePath(QStringLiteral("bin"));
     if (!QDir(bin).exists()) {
         error = QObject::tr("Plutonium's bin folder was not found under %1.").arg(QDir::toNativeSeparators(s.plutoniumInstance));

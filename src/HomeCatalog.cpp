@@ -9,6 +9,7 @@
 #include <QHash>
 #include <QJsonArray>
 #include <QJsonDocument>
+#include <QRegularExpression>
 #include <QJsonObject>
 #include <QCryptographicHash>
 #include <QLocale>
@@ -321,6 +322,32 @@ InstallIndex scanInstalled(const QString &plutoniumRoot)
         const QString host = pu + QStringLiteral("/storage/") + code + QStringLiteral("/.cll_host");
         for (const QString &folder : QDir(host).entryList(QDir::Dirs | QDir::NoDotAndDotDot))
             ingest(host + QLatin1Char('/') + folder + QStringLiteral("/download.json"), code, folder);
+    }
+    // Quality of Life series mods are installed by QolService with no
+    // download.json; read their mod.json so the Home badge is right.
+    for (const QString &code : QStringList{QStringLiteral("t4"), QStringLiteral("t5"),
+                                           QStringLiteral("t6"), QStringLiteral("iw5")}) {
+        const QString mods = pu + QStringLiteral("/storage/") + code + QStringLiteral("/mods");
+        for (const QString &folder : QDir(mods).entryList(QDir::Dirs | QDir::NoDotAndDotDot)) {
+            if (QFileInfo::exists(mods + QLatin1Char('/') + folder + QStringLiteral("/download.json")))
+                continue;
+            QFile f(mods + QLatin1Char('/') + folder + QStringLiteral("/mod.json"));
+            if (!f.open(QIODevice::ReadOnly))
+                continue;
+            const QJsonObject o = QJsonDocument::fromJson(f.readAll()).object();
+            QString name = o.value(QStringLiteral("name")).toString();
+            name.remove(QRegularExpression(QStringLiteral("\^[0-9]")));
+            if (name.compare(QLatin1String("Quality Of Life"), Qt::CaseInsensitive) != 0
+                && folder.compare(QLatin1String("zm_qol"), Qt::CaseInsensitive) != 0)
+                continue;
+            LocalInstall it;
+            it.sourceUrl = QStringLiteral("https://github.com/DavidHiFi/T6-QoL");
+            it.releaseVersion = o.value(QStringLiteral("version")).toString();
+            it.releaseVersion.remove(QRegularExpression(QStringLiteral("\^[0-9]")));
+            it.folder = folder;
+            it.gameCode = code;
+            out << it;
+        }
     }
     return out;
 }

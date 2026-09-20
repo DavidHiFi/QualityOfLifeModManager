@@ -473,6 +473,7 @@ QLabel#DialogIcon { padding-right: 6px; }
 #PlayPage QCheckBox[onArt="true"]:checked { color: @HERO_TEXT@; }
 
 #AboutColumn { background: transparent; }
+#AboutLink { padding: 0 18px; font-weight: 600; }
 #AboutCredit {
     color: @ACCENT_SOFT@;
     font-size: 13pt;

@@ -12,6 +12,7 @@
 #include "pages/PlayPage.h"
 #include "pages/HomePage.h"
 #include "pages/QolPage.h"
+#include "QolService.h"
 #include "pages/ModsPage.h"
 #include "pages/ServerPage.h"
 #include "pages/SettingsPage.h"
@@ -22,6 +23,7 @@
 #include <QIcon>
 #include <QLabel>
 #include <QPushButton>
+#include <QScrollArea>
 #include <QStackedWidget>
 #include <QUrl>
 #include <QVBoxLayout>
@@ -108,7 +110,9 @@ MainWindow::MainWindow(QWidget *parent)
     setWindowTitle(tr(QOL_APP_NAME));
     setWindowIcon(QIcon(":/icons/icon.ico"));
     resize(1180, 720);
-    setMinimumSize(960, 600);
+    // Six game rows plus five tools plus brand and footer: below this the
+    // bottom game row gets squeezed.
+    setMinimumSize(960, 720);
 
     auto *central = new QWidget(this);
     auto *outer = new QHBoxLayout(central);
@@ -155,6 +159,15 @@ MainWindow::MainWindow(QWidget *parent)
     });
 
     connect(m_homePage, &HomePage::installRequested, this, [this](const QString &modId) {
+        // Series mods ship plain release zips, not a CLL manifest: the
+        // Quality of Life page owns those installs.
+        for (const QolService::SeriesMod &sm : QolService::series()) {
+            if (sm.released && modId == QStringLiteral("%1-quality-of-life").arg(sm.gameCode)) {
+                showTool(ToolQol);
+                m_qolPage->installSeriesMod(sm.gameCode);
+                return;
+            }
+        }
         showTool(ToolMods);
         if (!modId.isEmpty())
             m_modsPage->installFromCatalog(modId);
@@ -348,7 +361,7 @@ QWidget *MainWindow::buildSidebar()
         hl->addWidget(ic);
         hl->addLayout(txtCol, 1);
         hl->addWidget(grip, 0, Qt::AlignVCenter);
-        btn->setMinimumHeight(46);
+        btn->setFixedHeight(46);
         m_gamesLay->addWidget(btn);
         m_gameButtons << btn;
         connect(btn, &QPushButton::clicked, this, [this, btn]() {

@@ -69,9 +69,12 @@ AboutPage::AboutPage(QWidget *parent)
     auto *repos = new QHBoxLayout();
     repos->setSpacing(10);
     repos->addStretch();
-    repos->addWidget(link(col, QStringLiteral("GitHub"), QStringLiteral(QOL_REPO_URL), "PrimaryButton"));
-    repos->addWidget(link(col, tr("The series"), QStringLiteral(QOL_SERIES_URL)));
-    repos->addWidget(link(col, tr("Licence"), QStringLiteral(QOL_REPO_URL "/blob/main/LICENSE")));
+    for (QPushButton *b : {link(col, QStringLiteral("GitHub"), QStringLiteral(QOL_REPO_URL), "AboutLink"),
+                           link(col, tr("The series"), QStringLiteral(QOL_SERIES_URL), "AboutLink"),
+                           link(col, tr("Licence"), QStringLiteral(QOL_REPO_URL "/blob/main/LICENSE"), "AboutLink")}) {
+        b->setMinimumSize(110, 36);
+        repos->addWidget(b);
+    }
     repos->addStretch();
     root->addLayout(repos);
 

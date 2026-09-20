@@ -6,6 +6,7 @@
 #include "QolService.h"
 
 #include <QApplication>
+#include <QGuiApplication>
 #include <QCommandLineOption>
 #include <QCommandLineParser>
 #include <QDir>
@@ -61,6 +62,10 @@ int runNoGui(AppSettings &settings, const QCommandLineParser &parser)
 
 int main(int argc, char *argv[])
 {
+    // Fractional scaling (125 %, 150 %) rounds to the nearest integer by
+    // default in Qt 6, which makes everything oversized on laptops. Pass
+    // the real factor through and let the layouts scale.
+    QGuiApplication::setHighDpiScaleFactorRoundingPolicy(Qt::HighDpiScaleFactorRoundingPolicy::PassThrough);
     QApplication app(argc, argv);
     QApplication::setApplicationName(QOL_APP_NAME);
     QApplication::setApplicationVersion(QStringLiteral(CLL_VERSION));

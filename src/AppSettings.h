@@ -55,6 +55,7 @@ public:
     bool loadFromIni();
     void saveToIni() const;
     void applyDefaultPlutoniumInstanceIfEmpty();
+    void fillGameFoldersFromSteam();
     QString gameFolder(const QString &gameIdName) const;
     static AppSettings loadForStartup();
 };

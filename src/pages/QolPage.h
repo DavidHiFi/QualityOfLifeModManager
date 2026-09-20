@@ -20,6 +20,8 @@ public:
     explicit QolPage(AppSettings &settings, QWidget *parent = nullptr);
     void refresh();
     void retranslate();
+    // Install or update a series mod by game code (t6...). Returns false if unknown.
+    bool installSeriesMod(const QString &gameCode);
 
 signals:
     void installedChanged();

@@ -32,6 +32,22 @@ const QStringList kControllerNames = {
     "xenonbutton_dpad_all.iwi", "xenonbutton_dpad_up.iwi", "xenonbutton_dpad_down.iwi",
     "xenonbutton_dpad_left.iwi", "xenonbutton_dpad_right.iwi", "xenonbutton_dpad_ud.iwi",
     "xenonbutton_dpad_rl.iwi"};
+// The HD pack's first-person arm re-textures (Victis, Mob of the Dead,
+// Richtofen). The user wants stock arms on every crew; the pack still carries
+// these 18 files, so they are refused at the copy. Same list as the PowerShell
+// installer's $VIEWARMFILES.
+const QStringList kViewArmNames = {
+    "~-gviewarm_zom_armhair_alpha_c.iwi",
+    "~-gviewarm_zom_deluca_longsleeve_c.iwi", "viewarm_zom_deluca_longsleeve_n.iwi",
+    "~-gviewarm_zom_engineer_c.iwi", "viewarm_zom_engineer_n.iwi",
+    "~-gviewarm_zom_handsome_barea~031b2e1b.iwi",
+    "~-gviewarm_zom_handsome_barearm_left_c.iwi", "viewarm_zom_handsome_barearm_n.iwi",
+    "~-gviewarm_zom_oldman_c.iwi", "viewarm_zom_oldman_n.iwi",
+    "~-gviewarm_zom_oleary_shortsleeve_c.iwi", "viewarm_zom_oleary_shortsleeve_n.iwi",
+    "~-gviewarm_zom_reporter_c.iwi", "viewarm_zom_reporter_n.iwi",
+    "~-gviewarm_zom_richtofen_l_c.iwi", "~-gviewarm_zom_richtofen_r_c.iwi",
+    "viewarm_zom_richtofen_n.iwi",
+    "~~-gviewarm_zom_strands_alpha~b94bebe4.iwi"};
 
 QString manifestPath(const AppSettings &s, const QString &kind)
 {
@@ -380,7 +396,7 @@ bool installPack(const AppSettings &s, Pack pack, const Progress &p, QString &er
     // Controller glyphs are owned by the controller pack; a texture install
     // must not overwrite the one the user chose.
     const QStringList skip = pack == Pack::Textures
-        ? kControllerNames + QStringList{QStringLiteral("hud_dpad_blood.iwi")}
+        ? kControllerNames + kViewArmNames + QStringList{QStringLiteral("hud_dpad_blood.iwi")}
         : QStringList{};
     if (!copyTree(src, packDest(s, pack), skip, written, error))
         return false;

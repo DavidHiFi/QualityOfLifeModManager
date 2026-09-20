@@ -43,4 +43,7 @@ New-Item -ItemType Directory -Force -Path $Dist | Out-Null
 Copy-Item $exe.FullName $Dist
 & "$Qt\bin\windeployqt.exe" --release --no-translations --no-opengl-sw --compiler-runtime (Join-Path $Dist $exe.Name) | Out-Null
 if ($LASTEXITCODE -ne 0) { throw "windeployqt failed ($LASTEXITCODE)" }
+# Ship the Start menu installer beside the exe.
+Copy-Item (Join-Path $PSScriptRoot 'install.ps1') (Join-Path $Dist 'install.ps1') -Force
+Set-Content (Join-Path $Dist 'Install to Start menu.bat') ("@echo off`r`npowershell -NoProfile -ExecutionPolicy Bypass -File `"%~dp0install.ps1`"`r`npause`r`n")
 Write-Host "Built: $(Join-Path $Dist $exe.Name)"

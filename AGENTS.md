@@ -66,6 +66,20 @@ a preference. Change it and every online launch is a 401 again.
 A mod still cannot be pre-loaded online; `fs_game` is LAN only. Any Plutonium
 root with a bootstrapper works now, registered or not.
 
+**The update feed is a fallback, not the source of truth.** `qol_update.json`
+is a file somebody regenerates with `scripts/gen_update.py`, so on its own it
+pins the LAN clients to whatever version was current the last time anyone ran
+that - T7-CLL and S1-CLL would sit on one release forever. `UpdateService::
+resolveLatest()` therefore asks each component's own repository first, by
+reading the redirect from
+`https://github.com/<repo>/releases/latest/download/<asset>` to
+`/releases/download/<tag>/<asset>`. One request, plain `github.com`, so no
+api.github.com rate limit and no token - and **api.github.com is blocked on some
+machines, this one included**, which is why the API is not used. Anything it
+cannot reach keeps the feed's values, so offline degrades to the old behaviour.
+It only asks about components that are actually installed. Check it with
+`-checkupdates`, which prints `live` or `feed` per component.
+
 **Never decide "there is an update" by comparing two version strings for
 inequality.** Use `VersionCompare::isUpdate(have, latest)`, which only says yes
 when both sides parse as a plain dotted version and `latest` is strictly ahead.
@@ -131,6 +145,16 @@ dist\QualityOfLifeModManager.exe -nogui -online -gameid T6 -mode ZM `
 
 It prints the pid it started. A pass is a `Plutonium T6 Zombies (rNNNN)` window
 whose parent is the app, with no `plutonium-launcher-win32.exe` in the tree.
+
+To see what the updater resolves, without the GUI:
+
+```powershell
+dist\QualityOfLifeModManager.exe -checkupdates
+```
+
+Every installed component should print `live`, with `feed` only for ones that
+are not installed or have no GitHub release. It is a GUI-subsystem exe, so
+redirect stdout to a file rather than reading it off the pipe.
 
 ## Releasing
 

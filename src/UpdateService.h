@@ -18,8 +18,11 @@ namespace UpdateService
         QString repo;
         QString version;
         QString url;
-        QString hash;
+        QString hash;     // sha1 from the feed; empty once resolved live
+        QString sha256;   // GitHub's own asset digest, when the API gives one
+        QString feedVersion; // what the feed claimed, kept after a live lookup
         qint64 size = 0;
+        bool live = false; // version/url came from the source repo, not the feed
     };
 
     struct Catalog {
@@ -34,6 +37,16 @@ namespace UpdateService
     };
 
     Catalog fetch(QString &error);
+
+    // Ask each component's own repository what its latest release is, instead
+    // of trusting the version baked into the feed. The feed is a file somebody
+    // regenerates by hand, so without this a new T7-CLL or S1-CLL release stays
+    // invisible until that happens - the app would sit on one client version
+    // forever. Only asks about components that are actually installed, and
+    // leaves the feed's values in place for anything it cannot reach, so a
+    // rate-limited or offline check degrades to the old behaviour.
+    void resolveLatest(Catalog &cat, const AppSettings &settings);
+
     QList<Pending> detect(const Catalog &cat, const AppSettings &settings);
 
     void stamp(const QString &id, const QString &version, const QString &hash);

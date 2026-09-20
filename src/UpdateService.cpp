@@ -1,4 +1,5 @@
 #include "UpdateService.h"
+#include "VersionCompare.h"
 #include "AppSettings.h"
 #include "ArchiveTool.h"
 #include "Downloader.h"
@@ -20,6 +21,8 @@
 #include <QListWidget>
 #include <QMessageBox>
 #include <QProcess>
+#include <QRegularExpression>
+#include <QUrl>
 #include <QPushButton>
 #include <QSettings>
 #include <QThread>
@@ -52,6 +55,17 @@ QString sha1Of(const QString &path)
     if (!f.open(QIODevice::ReadOnly))
         return {};
     QCryptographicHash h(QCryptographicHash::Sha1);
+    while (!f.atEnd())
+        h.addData(f.read(1024 * 1024));
+    return QString::fromLatin1(h.result().toHex());
+}
+
+QString sha256Of(const QString &path)
+{
+    QFile f(path);
+    if (!f.open(QIODevice::ReadOnly))
+        return {};
+    QCryptographicHash h(QCryptographicHash::Sha256);
     while (!f.atEnd())
         h.addData(f.read(1024 * 1024));
     return QString::fromLatin1(h.result().toHex());
@@ -130,7 +144,19 @@ bool applyItem(const UpdateService::Item &it, AppSettings &settings, QString &er
             error = QCoreApplication::translate("UpdateService", "SHA-1 mismatch for %1.").arg(it.name);
             return false;
         }
+    } else if (!it.sha256.isEmpty()) {
+        // A live lookup cannot reuse the feed's sha1, but GitHub publishes its
+        // own digest for the asset, so the download is still verified.
+        const QString got = sha256Of(tmp);
+        if (!got.isEmpty() && got.compare(it.sha256, Qt::CaseInsensitive) != 0) {
+            QFile::remove(tmp);
+            error = QCoreApplication::translate("UpdateService", "SHA-256 mismatch for %1.").arg(it.name);
+            return false;
+        }
     }
+    // Stamp what we actually downloaded. The feed's hash is meaningless once a
+    // live lookup has moved us to a newer release.
+    const QString stampHash = it.hash.isEmpty() ? sha1Of(tmp) : it.hash;
 
     if (it.id == QLatin1String("launcher")) {
         const QString staged = QCoreApplication::applicationFilePath() + QStringLiteral(".new");
@@ -141,7 +167,7 @@ bool applyItem(const UpdateService::Item &it, AppSettings &settings, QString &er
             return false;
         }
         QFile::remove(tmp);
-        UpdateService::stamp(it.id, it.version, it.hash);
+        UpdateService::stamp(it.id, it.version, stampHash);
         if (!spawnSelfReplace(staged)) {
             error = QCoreApplication::translate("UpdateService", "Could not start the updater helper.");
             return false;
@@ -162,7 +188,7 @@ bool applyItem(const UpdateService::Item &it, AppSettings &settings, QString &er
         QFile::remove(tmp);
         settings.plutoniumInstance = puDir;
         settings.saveToIni();
-        UpdateService::stamp(it.id, it.version, it.hash);
+        UpdateService::stamp(it.id, it.version, stampHash);
         return true;
     }
 
@@ -179,7 +205,7 @@ bool applyItem(const UpdateService::Item &it, AppSettings &settings, QString &er
             return false;
         }
         QFile::remove(tmp);
-        UpdateService::stamp(it.id, it.version, it.hash);
+        UpdateService::stamp(it.id, it.version, stampHash);
         return true;
     }
 
@@ -197,7 +223,7 @@ bool applyItem(const UpdateService::Item &it, AppSettings &settings, QString &er
             return false;
         }
         QFile::remove(tmp);
-        UpdateService::stamp(it.id, it.version, it.hash);
+        UpdateService::stamp(it.id, it.version, stampHash);
         return true;
     }
 
@@ -218,7 +244,7 @@ bool applyItem(const UpdateService::Item &it, AppSettings &settings, QString &er
         settings.bo3Client = QStringLiteral("competitive");
         settings.bo3ClientChosen = true;
         settings.saveToIni();
-        UpdateService::stamp(it.id, it.version, it.hash);
+        UpdateService::stamp(it.id, it.version, stampHash);
         return true;
     }
 
@@ -328,6 +354,88 @@ Catalog fetch(QString &error)
     return cat;
 }
 
+// Is this component present on this PC at all? Nothing is worth offering an
+// update for otherwise, and it keeps the live lookups down to what matters.
+static bool componentInstalled(const QString &id, const AppSettings &settings)
+{
+    if (id == QLatin1String("launcher"))
+        return true;
+    if (id == QLatin1String("pu"))
+        return settings.usingLocalPortableKit() || !stampedHash(id).isEmpty();
+    if (id == QLatin1String("t7-cll"))
+        return QFileInfo::exists(QDir(settings.bo3).filePath(QStringLiteral("boiii.exe")))
+               || !stampedHash(id).isEmpty();
+    if (id == QLatin1String("s1-cll"))
+        return QFileInfo::exists(QDir(settings.aw).filePath(QStringLiteral("s1.exe")))
+               || !stampedHash(id).isEmpty();
+    if (id == QLatin1String("boiii-community"))
+        return settings.bo3Client == QLatin1String("competitive")
+               || !stampedHash(id).isEmpty();
+    return false;
+}
+
+void resolveLatest(Catalog &cat, const AppSettings &settings)
+{
+    for (Item &it : cat.items) {
+        // boiii-community already comes from its own live updater.json in
+        // fetch(), and it has no GitHub release to ask about.
+        if (it.repo.isEmpty() || it.name.isEmpty()
+            || it.id == QLatin1String("boiii-community"))
+            continue;
+        if (!componentInstalled(it.id, settings))
+            continue;
+
+        // GitHub answers /releases/latest/download/<asset> with a redirect to
+        // /releases/download/<tag>/<asset>. One request, no api.github.com, so
+        // no rate limit and no token - and the redirect only exists if that
+        // release really does carry an asset by that name.
+        QString err;
+        const QString target = Downloader::redirectTargetOf(
+            QStringLiteral("https://github.com/%1/releases/latest/download/%2")
+                .arg(it.repo, it.name),
+            err, 10000);
+        if (target.isEmpty())
+            continue; // offline, blocked, repo gone: keep the feed's values
+
+        static const QRegularExpression re(
+            QStringLiteral("/releases/download/([^/]+)/"));
+        const QRegularExpressionMatch m = re.match(target);
+        if (!m.hasMatch())
+            continue;
+        const QString tag = QUrl::fromPercentEncoding(m.captured(1).toUtf8());
+        if (tag.isEmpty())
+            continue;
+
+        it.feedVersion = it.version;
+        // The feed pinned a sha1 for the old asset; it cannot vouch for a newer
+        // one. Keep it only while the tag still matches what the feed described.
+        if (tag.compare(it.version, Qt::CaseInsensitive) != 0)
+            it.hash.clear();
+        it.version = tag;
+        it.url = target;
+        it.live = true;
+    }
+}
+
+// Should this component be offered? When we asked the repo directly, the
+// release tag is the authority; the feed's sha1 belongs to an older asset and
+// cannot speak for a newer one. Falling back to the feed's version as "what we
+// would have installed" keeps users who never had a version stamped - anyone
+// who installed the client outside this app - from being stuck forever.
+static bool clientPending(const UpdateService::Item &it)
+{
+    const QString localVer = stampedVersion(it.id);
+    const QString localHash = stampedHash(it.id);
+    if (it.live) {
+        const QString base = !localVer.isEmpty() ? localVer : it.feedVersion;
+        if (!base.isEmpty())
+            return VersionCompare::isUpdate(base, it.version);
+    }
+    if (it.hash.isEmpty())
+        return false; // nothing trustworthy to compare against: stay quiet
+    return localHash.isEmpty() || localHash.compare(it.hash, Qt::CaseInsensitive) != 0;
+}
+
 QList<Pending> detect(const Catalog &cat, const AppSettings &settings)
 {
     QList<Pending> out;
@@ -353,11 +461,9 @@ QList<Pending> detect(const Catalog &cat, const AppSettings &settings)
         }
 
         if (it.id == QLatin1String("pu")) {
-            if (!settings.usingLocalPortableKit()
-                && stampedHash(it.id).isEmpty())
+            if (!componentInstalled(it.id, settings))
                 continue;
-            const QString local = stampedHash(it.id);
-            if (local.isEmpty() || local.compare(it.hash, Qt::CaseInsensitive) != 0) {
+            if (clientPending(it)) {
                 p.detail = it.version;
                 out << p;
             }
@@ -365,11 +471,9 @@ QList<Pending> detect(const Catalog &cat, const AppSettings &settings)
         }
 
         if (it.id == QLatin1String("t7-cll")) {
-            const QString exe = QDir(settings.bo3).filePath(QStringLiteral("boiii.exe"));
-            if (!QFileInfo::exists(exe) && stampedHash(it.id).isEmpty())
+            if (!componentInstalled(it.id, settings))
                 continue;
-            const QString local = stampedHash(it.id);
-            if (local.isEmpty() || local.compare(it.hash, Qt::CaseInsensitive) != 0) {
+            if (clientPending(it)) {
                 p.detail = it.version;
                 out << p;
             }
@@ -377,11 +481,9 @@ QList<Pending> detect(const Catalog &cat, const AppSettings &settings)
         }
 
         if (it.id == QLatin1String("s1-cll")) {
-            const QString exe = QDir(settings.aw).filePath(QStringLiteral("s1.exe"));
-            if (!QFileInfo::exists(exe) && stampedHash(it.id).isEmpty())
+            if (!componentInstalled(it.id, settings))
                 continue;
-            const QString local = stampedHash(it.id);
-            if (local.isEmpty() || local.compare(it.hash, Qt::CaseInsensitive) != 0) {
+            if (clientPending(it)) {
                 p.detail = it.version;
                 out << p;
             }
@@ -408,7 +510,10 @@ QList<Pending> detect(const Catalog &cat, const AppSettings &settings)
 bool prompt(QWidget *parent, AppSettings &settings, bool silentIfNone)
 {
     QString error;
-    const Catalog cat = fetch(error);
+    Catalog cat = fetch(error);
+    // Ask each component's own repo before deciding anything, so a feed nobody
+    // has regenerated cannot pin the LAN clients to one version forever.
+    resolveLatest(cat, settings);
     if (cat.items.isEmpty()) {
         if (!silentIfNone) {
             QMessageBox::warning(parent,
@@ -425,7 +530,8 @@ bool prompt(QWidget *parent, AppSettings &settings, bool silentIfNone)
         if (it.id == QLatin1String("launcher"))
             continue;
         const QString local = stampedHash(it.id);
-        if (!local.isEmpty() && local.compare(it.hash, Qt::CaseInsensitive) == 0
+        if (!it.hash.isEmpty() && !local.isEmpty()
+            && local.compare(it.hash, Qt::CaseInsensitive) == 0
             && stampedVersion(it.id) != it.version)
             stamp(it.id, it.version, it.hash);
     }

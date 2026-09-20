@@ -93,4 +93,40 @@ QByteArray downloadBytes(const QString &url, QString &error, int timeoutMs)
     return data;
 }
 
+QString redirectTargetOf(const QString &url, QString &error, int timeoutMs)
+{
+    QNetworkAccessManager manager;
+    QNetworkRequest request{QUrl(url)};
+    request.setHeader(QNetworkRequest::UserAgentHeader, QLatin1String(CLL_USER_AGENT));
+    // Do not follow it: the redirect itself is the answer we want.
+    request.setAttribute(QNetworkRequest::RedirectPolicyAttribute,
+                         QNetworkRequest::ManualRedirectPolicy);
+    QNetworkReply *reply = manager.head(request);
+
+    QEventLoop loop;
+    QObject::connect(reply, &QNetworkReply::finished, &loop, &QEventLoop::quit);
+    QTimer timeout;
+    timeout.setSingleShot(true);
+    QObject::connect(&timeout, &QTimer::timeout, &loop, &QEventLoop::quit);
+    timeout.start(timeoutMs > 0 ? timeoutMs : 10000);
+    loop.exec();
+
+    if (!timeout.isActive()) {
+        reply->abort();
+        reply->deleteLater();
+        error = QObject::tr("Timed out asking for %1").arg(url);
+        return {};
+    }
+    const QVariant target = reply->attribute(QNetworkRequest::RedirectionTargetAttribute);
+    const QString errText = reply->errorString();
+    const bool failed = reply->error() != QNetworkReply::NoError;
+    reply->deleteLater();
+    if (!target.isValid()) {
+        error = failed ? errText : QObject::tr("%1 did not redirect").arg(url);
+        return {};
+    }
+    // A relative Location is legal; resolve it against what we asked for.
+    return QUrl(url).resolved(target.toUrl()).toString();
+}
+
 } // namespace Downloader

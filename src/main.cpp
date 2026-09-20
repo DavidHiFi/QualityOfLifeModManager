@@ -4,6 +4,7 @@
 #include "Theme.h"
 #include "MainWindow.h"
 #include "QolService.h"
+#include "UpdateService.h"
 #include "PlutoniumAuth.h"
 #include "HomeCatalog.h"
 #include "VersionCompare.h"
@@ -104,7 +105,37 @@ int main(int argc, char *argv[])
                                 "account) instead of LAN."});
     parser.addOption({"selftest", "Offline checks against -plutoniumdir (ReShade install/remove, watchdog unpack, "
                                   "online handler probe); prints one line per check and exits non-zero on failure."});
+    parser.addOption({"checkupdates", "Print what each component resolves to and what is pending, then exit. "
+                                      "Shows whether a version came from the feed or from the component's own repo."});
     parser.process(app);
+
+    if (parser.isSet("checkupdates")) {
+        AppSettings settings = AppSettings::loadForStartup();
+        if (parser.isSet("plutoniumdir"))
+            settings.plutoniumInstance = AppSettings::resolvePath(parser.value("plutoniumdir"));
+        QTextStream out(stdout);
+        QString error;
+        UpdateService::Catalog cat = UpdateService::fetch(error);
+        if (cat.items.isEmpty()) {
+            out << "feed: " << (error.isEmpty() ? QStringLiteral("empty") : error) << Qt::endl;
+            return 1;
+        }
+        UpdateService::resolveLatest(cat, settings);
+        for (const UpdateService::Item &it : cat.items) {
+            out << (it.live ? "live " : "feed ") << it.id << " = " << it.version;
+            if (it.live && !it.feedVersion.isEmpty() && it.feedVersion != it.version)
+                out << " (feed said " << it.feedVersion << ")";
+            const QString have = (it.id == QLatin1String("launcher"))
+                                     ? QStringLiteral(CLL_VERSION)
+                                     : UpdateService::stampedVersion(it.id);
+            if (!have.isEmpty())
+                out << ", installed " << have;
+            out << Qt::endl;
+        }
+        for (const UpdateService::Pending &p : UpdateService::detect(cat, settings))
+            out << "PENDING " << p.title << " -> " << p.remote.version << Qt::endl;
+        return 0;
+    }
 
     if (parser.isSet("selftest")) {
         AppSettings settings = AppSettings::loadForStartup();

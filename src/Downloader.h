@@ -13,4 +13,10 @@ namespace Downloader
 
     QByteArray downloadBytes(const QString &url, QString &error,
                              int timeoutMs = 60000);
+
+    // The Location of a single redirect, without following it and without
+    // downloading the body. GitHub answers /releases/latest/download/<asset>
+    // with a redirect to /releases/download/<tag>/<asset>, which is how the
+    // latest release tag is read without touching the rate-limited API.
+    QString redirectTargetOf(const QString &url, QString &error, int timeoutMs = 10000);
 }

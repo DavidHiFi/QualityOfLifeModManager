@@ -130,21 +130,25 @@ int main(int argc, char *argv[])
         note("plutonium account", PlutoniumAuth::accountSummary(
                  PlutoniumAuth::tokenRoot(settings.plutoniumInstance)));
         QString err;
-        check("reshade install", QolService::installReShade(settings, err), err);
-        check("reshade dxgi present", QolService::reShadeInstalled(settings));
-        check("reshade vault present", QDir(QolService::reShadeVault(settings)).exists());
-        check("reshade remove", QolService::removeReShade(settings, err), err);
-        check("reshade dxgi gone", !QolService::reShadeInstalled(settings));
+        // Every ReShade check runs against its own scratch root. They used to
+        // use -plutoniumdir, which meant pointing the selftest at a real
+        // install silently uninstalled that user's ReShade.
+        AppSettings rs = settings;
+        rs.plutoniumInstance = QDir(QDir::tempPath()).filePath(QStringLiteral("qol-selftest-reshade"));
+        QDir(rs.plutoniumInstance).removeRecursively();
+        QDir().mkpath(QDir(rs.plutoniumInstance).filePath(QStringLiteral("bin")));
+        check("reshade install", QolService::installReShade(rs, err), err);
+        check("reshade dxgi present", QolService::reShadeInstalled(rs));
+        check("reshade vault present", QDir(QolService::reShadeVault(rs)).exists());
+        check("reshade remove", QolService::removeReShade(rs, err), err);
+        check("reshade dxgi gone", !QolService::reShadeInstalled(rs));
         // The regression: ReShade in bin with no manifest to remove it by (put
         // there by hand, by a repair, or by a script). Remove used to delete
         // nothing and still report success, so the button never changed.
         // Hermetic: its own scratch root, never the one passed in, so this can
         // never overwrite a real bin\dxgi.dll.
         {
-            AppSettings scratch = settings;
-            scratch.plutoniumInstance =
-                QDir(QDir::tempPath()).filePath(QStringLiteral("qol-selftest-reshade"));
-            QDir(scratch.plutoniumInstance).removeRecursively();
+            const AppSettings &scratch = rs;
             const QString bin = QDir(scratch.plutoniumInstance).filePath(QStringLiteral("bin"));
             QDir().mkpath(bin);
             QFile stray(QDir(bin).filePath(QStringLiteral("dxgi.dll")));
@@ -156,11 +160,11 @@ int main(int argc, char *argv[])
             check("reshade remove without a manifest",
                   QolService::removeReShade(scratch, rmErr), rmErr);
             check("reshade unmanaged dxgi gone", !QolService::reShadeInstalled(scratch));
-            QDir(scratch.plutoniumInstance).removeRecursively();
         }
-        const qint64 wd = GameLauncher::startReShadeWatchdog(settings.plutoniumInstance, err);
+        const qint64 wd = GameLauncher::startReShadeWatchdog(rs.plutoniumInstance, err);
         check("watchdog started", wd > 0, err);
         if (wd > 0) GameLauncher::stopReShadeWatchdog();
+        QDir(rs.plutoniumInstance).removeRecursively();
         check("themes >= 15", Theme::names().size() >= 15, QString::number(Theme::names().size()));
         for (const QString &key : Theme::names()) {
             Theme::apply(key);

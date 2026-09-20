@@ -4,6 +4,7 @@
 #include "ArchiveTool.h"
 #include "Downloader.h"
 #include "ProgressDialog.h"
+#include "SelfUpdate.h"
 #include "Version.h"
 
 #include <QCoreApplication>
@@ -86,40 +87,6 @@ QString displayName(const QString &id)
     return id;
 }
 
-bool spawnSelfReplace(const QString &downloaded)
-{
-#ifdef Q_OS_WIN
-    const QString exe = QCoreApplication::applicationFilePath();
-    const QString bat = QDir::temp().filePath(QStringLiteral("cll_self_update.bat"));
-    QFile f(bat);
-    if (!f.open(QIODevice::WriteOnly | QIODevice::Truncate | QIODevice::Text))
-        return false;
-    const QString body = QStringLiteral(
-        "@echo off\r\n"
-        "set \"EXE=%~1\"\r\n"
-        "set \"NEW=%~2\"\r\n"
-        "set \"PID=%~3\"\r\n"
-        ":wait\r\n"
-        "tasklist /FI \"PID eq %PID%\" | find \"%PID%\" >nul\r\n"
-        "if not errorlevel 1 (\r\n"
-        "  ping -n 2 127.0.0.1 >nul\r\n"
-        "  goto wait\r\n"
-        ")\r\n"
-        "copy /Y \"%NEW%\" \"%EXE%\" >nul\r\n"
-        "del \"%NEW%\" >nul 2>nul\r\n"
-        "start \"\" \"%EXE%\"\r\n"
-        "del \"%~f0\"\r\n");
-    f.write(body.toLatin1());
-    f.close();
-    const QString pid = QString::number(QCoreApplication::applicationPid());
-    return QProcess::startDetached(bat, {exe, downloaded, pid},
-                                  QCoreApplication::applicationDirPath());
-#else
-    Q_UNUSED(downloaded);
-    return false;
-#endif
-}
-
 bool applyItem(const UpdateService::Item &it, AppSettings &settings, QString &error,
                const std::function<void(const QString &, int)> &progress)
 {
@@ -159,17 +126,13 @@ bool applyItem(const UpdateService::Item &it, AppSettings &settings, QString &er
     const QString stampHash = it.hash.isEmpty() ? sha1Of(tmp) : it.hash;
 
     if (it.id == QLatin1String("launcher")) {
-        const QString staged = QCoreApplication::applicationFilePath() + QStringLiteral(".new");
-        QFile::remove(staged);
-        if (!QFile::copy(tmp, staged)) {
+        // No stamp here. The old code recorded the new version the moment the
+        // download finished, so the .ini claimed a build that was never
+        // installed. Only a start that actually runs the new version counts:
+        // SelfUpdate::reconcile() does that stamping.
+        progress(QCoreApplication::translate("UpdateService", "Closing other copies of the app..."), 90);
+        if (!SelfUpdate::begin(tmp, it.version, error)) {
             QFile::remove(tmp);
-            error = QCoreApplication::translate("UpdateService", "Could not stage the new launcher.");
-            return false;
-        }
-        QFile::remove(tmp);
-        UpdateService::stamp(it.id, it.version, stampHash);
-        if (!spawnSelfReplace(staged)) {
-            error = QCoreApplication::translate("UpdateService", "Could not start the updater helper.");
             return false;
         }
         return true;
@@ -536,7 +499,18 @@ bool prompt(QWidget *parent, AppSettings &settings, bool silentIfNone)
             stamp(it.id, it.version, it.hash);
     }
 
-    const QList<Pending> pending = detect(cat, settings);
+    QList<Pending> pending = detect(cat, settings);
+    // A self-update that cannot replace the exe would otherwise be offered,
+    // fail, restart and be offered again for as long as the app is open. After
+    // two goes the automatic check leaves it alone; a manual check from
+    // Settings still tries, because by then the user has been told why.
+    if (silentIfNone) {
+        for (int i = pending.size() - 1; i >= 0; --i) {
+            if (pending.at(i).remote.id == QLatin1String("launcher")
+                && SelfUpdate::isExhausted(pending.at(i).remote.version))
+                pending.removeAt(i);
+        }
+    }
     if (pending.isEmpty()) {
         if (!silentIfNone) {
             QMessageBox::information(parent,

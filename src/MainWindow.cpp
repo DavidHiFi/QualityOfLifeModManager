@@ -9,6 +9,7 @@
 #include "Theme.h"
 #include "I18n.h"
 #include "UpdateService.h"
+#include "SelfUpdate.h"
 #include "Version.h"
 
 #include "pages/PlayPage.h"
@@ -24,6 +25,7 @@
 #include <QDesktopServices>
 #include <QIcon>
 #include <QLabel>
+#include <QMessageBox>
 #include <QPushButton>
 #include <QScrollArea>
 #include <QStackedWidget>
@@ -114,7 +116,10 @@ MainWindow::MainWindow(QWidget *parent)
     resize(1180, 720);
     // Six game rows plus five tools plus brand and footer: below this the
     // bottom game row gets squeezed.
-    setMinimumSize(960, 720);
+    // 720 used to be the floor because the sidebar could not give way below
+    // it; a window a few pixels short of that clipped the last game row. The
+    // nav column scrolls now, so a shorter window is a real size, not a bug.
+    setMinimumSize(960, 640);
 
     auto *central = new QWidget(this);
     auto *outer = new QHBoxLayout(central);
@@ -204,8 +209,11 @@ MainWindow::MainWindow(QWidget *parent)
         applyHomeVisibility();
     });
     connect(m_settingsPage, &SettingsPage::checkUpdatesRequested, this, [this]() {
+        // A manual check is the user saying "try it anyway", so clear whatever
+        // the last failed swap left behind before asking.
+        SelfUpdate::forget();
         if (UpdateService::prompt(this, m_settings, false))
-            qApp->quit();
+            SelfUpdate::quitForSwap();
     });
     connect(m_settingsPage, &SettingsPage::cancelled, this, [this]() {
         if (m_settings.homeEnabled)
@@ -225,11 +233,47 @@ MainWindow::MainWindow(QWidget *parent)
         selectGame(m_gameIndex);
     connect(&I18nHub::instance(), &I18nHub::languageChanged, this, &MainWindow::retranslate);
 
-    if (m_settings.checkUpdatesOnStart) {
+    // Settle the last self-update before asking about the next one: the build
+    // that is running now is the only evidence of whether the swap worked.
+    const SelfUpdate::Outcome swap = SelfUpdate::reconcile();
+    if (swap.failed && swap.attempts >= 2) {
+        QTimer::singleShot(400, this, [this, swap]() { reportFailedSelfUpdate(swap); });
+    } else if (m_settings.checkUpdatesOnStart) {
         QTimer::singleShot(900, this, [this]() {
             if (UpdateService::prompt(this, m_settings, true))
-                qApp->quit();
+                SelfUpdate::quitForSwap();
         });
+    }
+}
+
+// Two failed swaps in a row is not a hiccup: something is holding the program
+// file open, and silently trying a third time is how the app used to loop. Say
+// what happened and let the user pick what to do about it.
+void MainWindow::reportFailedSelfUpdate(const SelfUpdate::Outcome &swap)
+{
+    QMessageBox box(this);
+    box.setIcon(QMessageBox::Warning);
+    box.setWindowTitle(tr("Update not installed"));
+    box.setText(tr("Version %1 was downloaded but could not be installed. "
+                   "This is still version %2.")
+                    .arg(swap.version, QStringLiteral(CLL_VERSION)));
+    QString why = tr("Windows will not overwrite a program while a copy of it is "
+                     "running. Close every other window of this app and try again.");
+    if (!swap.reason.isEmpty())
+        why += QStringLiteral("\n\n") + tr("The updater said: %1").arg(swap.reason);
+    box.setInformativeText(why);
+    QPushButton *again = box.addButton(tr("Try again"), QMessageBox::AcceptRole);
+    QPushButton *manual = box.addButton(tr("Open the download page"), QMessageBox::ActionRole);
+    box.addButton(tr("Skip this version"), QMessageBox::RejectRole);
+    box.setDefaultButton(again);
+    box.exec();
+
+    if (box.clickedButton() == again) {
+        SelfUpdate::forget();
+        if (UpdateService::prompt(this, m_settings, false))
+            SelfUpdate::quitForSwap();
+    } else if (box.clickedButton() == manual) {
+        QDesktopServices::openUrl(QUrl(QStringLiteral(QOL_REPO_URL "/releases/latest")));
     }
 }
 
@@ -285,20 +329,38 @@ QWidget *MainWindow::buildSidebar()
     brand->addWidget(logo);
     brand->addLayout(titles, 1);
     layout->addLayout(brand);
-    layout->addSpacing(12);
+    layout->addSpacing(10);
 
-    m_homeNavBtn = new QPushButton(Theme::icon(":/icons/main.svg"), "  " + tr("Início"), sidebar);
+    // The nav column scrolls. Every row in it has a fixed height, so a window
+    // short enough to squeeze the column had nowhere to give and drew the last
+    // game row with its bottom edge sliced off.
+    auto *navScroll = new QScrollArea(sidebar);
+    navScroll->setObjectName("SidebarScroll");
+    navScroll->setWidgetResizable(true);
+    navScroll->setFrameShape(QFrame::NoFrame);
+    navScroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    navScroll->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+    navScroll->viewport()->setAutoFillBackground(false);
+    auto *nav = new QWidget(navScroll);
+    nav->setObjectName("SidebarNav");
+    auto *navLay = new QVBoxLayout(nav);
+    navLay->setContentsMargins(0, 0, 0, 0);
+    navLay->setSpacing(3);
+    navScroll->setWidget(nav);
+    layout->addWidget(navScroll, 1);
+
+    m_homeNavBtn = new QPushButton(Theme::icon(":/icons/main.svg"), "  " + tr("Início"), nav);
     m_homeNavBtn->setProperty("iconPath", ":/icons/main.svg");
     m_homeNavBtn->setObjectName("SidebarButton");
     m_homeNavBtn->setCheckable(true);
     m_homeNavBtn->setIconSize(QSize(32, 32));
     m_sidebar = sidebar;
     m_homeNavBtn->setCursor(Qt::PointingHandCursor);
-    layout->addWidget(m_homeNavBtn);
+    navLay->addWidget(m_homeNavBtn);
     connect(m_homeNavBtn, &QPushButton::clicked, this, [this]() { showTool(ToolHome); });
-    layout->addSpacing(10);
+    navLay->addSpacing(6);
 
-    auto *gamesHead = new QWidget(sidebar);
+    auto *gamesHead = new QWidget(nav);
     gamesHead->setObjectName("GamesNavHead");
     gamesHead->setAttribute(Qt::WA_StyledBackground, false);
     auto *gamesHeadLay = new QHBoxLayout(gamesHead);
@@ -317,10 +379,10 @@ QWidget *MainWindow::buildSidebar()
     m_editGamesBtn->setCheckable(true);
     gamesHeadLay->addWidget(m_sidebarGames, 1);
     gamesHeadLay->addWidget(m_editGamesBtn, 0, Qt::AlignRight | Qt::AlignVCenter);
-    layout->addWidget(gamesHead);
+    navLay->addWidget(gamesHead);
     connect(m_editGamesBtn, &QPushButton::clicked, this, [this](bool on) { setOrganizeGames(on); });
 
-    m_gamesBox = new QWidget(sidebar);
+    m_gamesBox = new QWidget(nav);
     m_gamesBox->setObjectName("GamesNavBox");
     m_gamesBox->setAttribute(Qt::WA_StyledBackground, false);
     m_gamesLay = new QVBoxLayout(m_gamesBox);
@@ -372,7 +434,7 @@ QWidget *MainWindow::buildSidebar()
                 selectGame(idx);
         });
     }
-    layout->addWidget(m_gamesBox);
+    navLay->addWidget(m_gamesBox);
     m_gameIndex = 0;
     for (int i = 0; i < m_gameButtons.size(); ++i) {
         if (m_gameButtons[i]->property("gameCode").toString() == QLatin1String("t6")) {
@@ -381,10 +443,10 @@ QWidget *MainWindow::buildSidebar()
         }
     }
 
-    layout->addSpacing(8);
-    m_sidebarTools = new QLabel(tr("FERRAMENTAS"), sidebar);
+    navLay->addSpacing(4);
+    m_sidebarTools = new QLabel(tr("FERRAMENTAS"), nav);
     m_sidebarTools->setObjectName("NavSection");
-    layout->addWidget(m_sidebarTools);
+    navLay->addWidget(m_sidebarTools);
 
     struct Tool { QString text; QString icon; };
     const QList<Tool> tools = {
@@ -397,26 +459,26 @@ QWidget *MainWindow::buildSidebar()
     for (int i = 0; i < tools.size(); ++i) {
         const bool rawIcon = (tools[i].icon == QLatin1String(":/icons/icon.ico"));
         auto *btn = new QPushButton(rawIcon ? QIcon(tools[i].icon) : Theme::icon(tools[i].icon),
-                                    "  " + tools[i].text, sidebar);
+                                    "  " + tools[i].text, nav);
         btn->setProperty("iconPath", tools[i].icon);
         btn->setProperty("rawIcon", rawIcon);
         btn->setObjectName("SidebarButton");
         btn->setCheckable(true);
         btn->setIconSize(QSize(16, 16));
         btn->setCursor(Qt::PointingHandCursor);
-        layout->addWidget(btn);
+        navLay->addWidget(btn);
         m_toolButtons << btn;
         connect(btn, &QPushButton::clicked, this, [this, i]() { showTool(i + kFirstTool); });
     }
 
-    layout->addStretch();
+    navLay->addStretch();
 
     auto *rule = new QFrame(sidebar);
     rule->setObjectName("NavRule");
     rule->setFrameShape(QFrame::NoFrame);
     rule->setFixedHeight(1);
     layout->addWidget(rule);
-    layout->addSpacing(8);
+    layout->addSpacing(6);
 
     auto *foot = new QWidget(sidebar);
     foot->setObjectName("SidebarFooter");

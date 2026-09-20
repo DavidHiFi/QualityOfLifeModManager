@@ -288,7 +288,13 @@ int main(int argc, char *argv[])
     const QString screenshotPath = qEnvironmentVariable("QOL_SCREENSHOT");
     if (!screenshotPath.isEmpty()) {
         const int pageIndex = qEnvironmentVariableIntValue("QOL_PAGE");
-        QTimer::singleShot(100, &window, [&window, pageIndex]() { window.debugShowPage(pageIndex); });
+        const int gameIndex = qEnvironmentVariableIntValue("QOL_GAME");
+        QTimer::singleShot(100, &window, [&window, pageIndex, gameIndex]() {
+            if (qEnvironmentVariableIsSet("QOL_GAME"))
+                window.debugSelectGame(gameIndex);
+            else
+                window.debugShowPage(pageIndex);
+        });
         QTimer::singleShot(qMax(400, qEnvironmentVariableIntValue("QOL_SHOT_DELAY")), &window, [&window, screenshotPath]() {
             window.grab().save(screenshotPath);
             QApplication::quit();

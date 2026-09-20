@@ -3,6 +3,7 @@
 #include <QTimer>
 
 #include "AppSettings.h"
+#include "SelfUpdate.h"
 
 class QStackedWidget;
 class QPushButton;
@@ -23,6 +24,7 @@ class MainWindow : public QMainWindow
 public:
     explicit MainWindow(QWidget *parent = nullptr);
     Q_INVOKABLE void debugShowPage(int index) { showTool(index); }
+    Q_INVOKABLE void debugSelectGame(int index) { selectGame(index); }
 
 private slots:
     void onLaunchGame(const QString &gameId, const QString &mode);
@@ -51,6 +53,7 @@ private:
     bool eventFilter(QObject *obj, QEvent *event) override;
     void resizeEvent(QResizeEvent *event) override;
     void closeEvent(QCloseEvent *event) override;
+    void reportFailedSelfUpdate(const SelfUpdate::Outcome &swap);
 
     AppSettings m_settings;
     QStackedWidget *m_stack = nullptr;

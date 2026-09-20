@@ -45,6 +45,7 @@ set(SOURCES
     src/HomeCatalog.cpp
     src/pages/HomePage.cpp
     src/UpdateService.cpp
+    src/SelfUpdate.cpp
     src/QolService.cpp
     src/pages/QolPage.cpp
 )
@@ -54,6 +55,7 @@ set(HEADERS
     src/Storage.h
     src/GameLauncher.h
     src/VersionCompare.h
+    src/SelfUpdate.h
     src/PlutoniumAuth.h
     src/LoginDialog.h
     src/ConfigMaker.h

@@ -374,10 +374,46 @@ Write-Host '  Closing this window (or Ctrl+C) does not uninstall anything.' -For
 Write-Host '  ------------------------------------------------------------------' -ForegroundColor Cyan
 Write-Host ''
 
+#  v2.1.3 - AN EMPTY VAULT USED TO READ AS A HEALTHY ONE.
+#
+#  User, 2026-09-21: ReShade launched with no shaders, a default UI and default
+#  hotkeys, and this script's own log called that fine - "Shader scan: 0 .fx
+#  hashed, 0 unique, 0 quarantined" at 02:48:29 and 02:49:54, then "Watching -
+#  bin is intact, nothing to restore" on a loop for the rest of the session.
+#
+#  The vault on that PC held dxgi.dll and the six .ini and NO reshade-shaders
+#  folder at all, so there was genuinely nothing to restore and the existence
+#  check below could not tell an empty vault from a full one. Counting the
+#  shaders is what separates them.
+$vaultFx = 0
+if (Test-Path -LiteralPath $VaultDir) {
+    $vaultFx = @(Get-ChildItem -LiteralPath $VaultDir -Recurse -File -Filter *.fx -ErrorAction SilentlyContinue).Count
+}
+
+$verifyPS1 = Join-Path $PSScriptRoot 'reshade-verify.ps1'
+if (Test-Path -LiteralPath $verifyPS1) {
+    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $verifyPS1
+    if (Test-Path -LiteralPath $VaultDir) {
+        $vaultFx = @(Get-ChildItem -LiteralPath $VaultDir -Recurse -File -Filter *.fx -ErrorAction SilentlyContinue).Count
+    }
+}
+
 if (-not (Test-Path -LiteralPath $VaultDir)) {
     Write-Host "  No ReShade vault found yet at:" -ForegroundColor Red
     Write-Host "    $VaultDir" -ForegroundColor Red
     Write-Host "  Open the mod manager, Quality of Life page, and install ReShade first." -ForegroundColor Red
+    Write-Host ''
+}
+elseif ($vaultFx -eq 0) {
+    Write-Host "  🛑 The ReShade vault has NO SHADERS in it:" -ForegroundColor Red
+    Write-Host "       $VaultDir" -ForegroundColor Red
+    Write-Host "  This watchdog restores from there, so it has nothing to put back" -ForegroundColor Red
+    Write-Host "  and ReShade will load with no effects however long it runs." -ForegroundColor Red
+    Write-Host "  Open the mod manager, Quality of Life page, and install ReShade again." -ForegroundColor Red
+    Write-Host ''
+}
+else {
+    Write-Host ("  Vault holds {0} shaders - they will be put back if Plutonium clears them." -f $vaultFx) -ForegroundColor Green
     Write-Host ''
 }
 

@@ -1,4 +1,5 @@
 #include "HomeCatalog.h"
+#include "VersionCompare.h"
 #include "Version.h"
 #include "AppSettings.h"
 #include "Downloader.h"
@@ -32,42 +33,10 @@ QHash<QString, QPixmap> &cache()
     return c;
 }
 
-QString normVer(QString s)
-{
-    s = s.trimmed().toLower();
-    if (s.startsWith(QLatin1Char('v')))
-        s.remove(0, 1);
-    return s;
-}
-
-// T6 mod names and versions carry inline colour codes: "^5Quality Of Life",
-// "^32.16.16". The regex needs the caret escaped for the regex engine, so the
-// C++ literal needs two backslashes.
+// T6 mod names carry inline colour codes: "^5Quality Of Life".
 QString stripColorCodes(QString s)
 {
     return s.remove(QRegularExpression(QStringLiteral("\\^[0-9]")));
-}
-
-// A version we are willing to reason about: digits and dots only, after the
-// optional leading "v". Release tags like "beta2" deliberately fail this.
-bool isComparableVersion(const QString &normalised)
-{
-    static const QRegularExpression re(QStringLiteral("^[0-9]+(\\.[0-9]+)*$"));
-    return re.match(normalised).hasMatch();
-}
-
-// -1 a<b, 0 equal, 1 a>b. Only valid for two isComparableVersion strings.
-int compareVersions(const QString &a, const QString &b)
-{
-    const QStringList pa = a.split(QLatin1Char('.'));
-    const QStringList pb = b.split(QLatin1Char('.'));
-    for (int i = 0; i < qMax(pa.size(), pb.size()); ++i) {
-        const int va = i < pa.size() ? pa.at(i).toInt() : 0;
-        const int vb = i < pb.size() ? pb.at(i).toInt() : 0;
-        if (va != vb)
-            return va < vb ? -1 : 1;
-    }
-    return 0;
 }
 
 // The author's version from a mod folder's mod.json, colour codes stripped.
@@ -405,25 +374,17 @@ Presence presenceOf(const Mod &mod, const InstallIndex &index)
         if (!sameOrigin(mod.url, it.sourceUrl))
             continue;
 
-        const QString catalogVer = normVer(mod.version);
-        if (catalogVer.isEmpty())
+        if (mod.version.trimmed().isEmpty())
             return Presence::Installed;
 
         // mod.json first: the catalog quotes the author's version, so that is
         // the like-for-like comparison. The release tag is the fallback, and
         // often is not a version at all.
-        for (const QString &raw : {it.modVersion, it.releaseVersion}) {
-            const QString localVer = normVer(raw);
-            if (localVer.isEmpty())
+        for (const QString &local : {it.modVersion, it.releaseVersion}) {
+            if (local.trimmed().isEmpty())
                 continue;
-            if (localVer == catalogVer)
-                return Presence::Installed;
-            if (!isComparableVersion(localVer) || !isComparableVersion(catalogVer))
-                continue; // e.g. "beta2" against "2.0": not the same scheme
-            // Strictly newer upstream is the only thing worth a prompt; an
-            // install ahead of the catalog is not out of date.
-            return compareVersions(catalogVer, localVer) > 0 ? Presence::Update
-                                                             : Presence::Installed;
+            return VersionCompare::isUpdate(local, mod.version) ? Presence::Update
+                                                                : Presence::Installed;
         }
         return Presence::Installed;
     }

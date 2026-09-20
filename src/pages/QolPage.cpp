@@ -1,4 +1,5 @@
 #include "QolPage.h"
+#include "VersionCompare.h"
 #include "AppSettings.h"
 #include "GameLauncher.h"
 #include "ProgressDialog.h"
@@ -255,7 +256,10 @@ void QolPage::refresh()
         if (have.isEmpty()) {
             r.status->setText(latest.isEmpty() ? tr("Not installed.") : tr("Not installed. Latest is %1.").arg(latest));
             r.primary->setText(tr("Install"));
-        } else if (!latest.isEmpty() && latest.compare(have, Qt::CaseInsensitive) != 0) {
+        } else if (VersionCompare::isUpdate(have, latest)) {
+            // Only when the release is genuinely ahead. A tag that merely spells
+            // the same version differently, or an install ahead of the release,
+            // used to leave this row asking to update forever.
             r.status->setText(tr("Installed %1. Update %2 is available.").arg(have, latest));
             r.primary->setText(tr("Update"));
         } else {

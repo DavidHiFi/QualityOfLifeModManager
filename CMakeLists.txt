@@ -53,6 +53,7 @@ set(HEADERS
     src/AppSettings.h
     src/Storage.h
     src/GameLauncher.h
+    src/VersionCompare.h
     src/PlutoniumAuth.h
     src/LoginDialog.h
     src/ConfigMaker.h

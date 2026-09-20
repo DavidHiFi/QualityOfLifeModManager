@@ -6,6 +6,7 @@
 #include "QolService.h"
 #include "PlutoniumAuth.h"
 #include "HomeCatalog.h"
+#include "VersionCompare.h"
 
 #include <QApplication>
 #include <QGuiApplication>
@@ -137,17 +138,25 @@ int main(int argc, char *argv[])
         // The regression: ReShade in bin with no manifest to remove it by (put
         // there by hand, by a repair, or by a script). Remove used to delete
         // nothing and still report success, so the button never changed.
+        // Hermetic: its own scratch root, never the one passed in, so this can
+        // never overwrite a real bin\dxgi.dll.
         {
-            const QString bin = QDir(settings.plutoniumInstance).filePath(QStringLiteral("bin"));
+            AppSettings scratch = settings;
+            scratch.plutoniumInstance =
+                QDir(QDir::tempPath()).filePath(QStringLiteral("qol-selftest-reshade"));
+            QDir(scratch.plutoniumInstance).removeRecursively();
+            const QString bin = QDir(scratch.plutoniumInstance).filePath(QStringLiteral("bin"));
             QDir().mkpath(bin);
             QFile stray(QDir(bin).filePath(QStringLiteral("dxgi.dll")));
             const bool staged = stray.open(QIODevice::WriteOnly | QIODevice::Truncate)
                                 && stray.write("not really reshade") > 0;
             stray.close();
-            check("reshade unmanaged staged", staged && QolService::reShadeInstalled(settings));
+            check("reshade unmanaged staged", staged && QolService::reShadeInstalled(scratch));
+            QString rmErr;
             check("reshade remove without a manifest",
-                  QolService::removeReShade(settings, err), err);
-            check("reshade unmanaged dxgi gone", !QolService::reShadeInstalled(settings));
+                  QolService::removeReShade(scratch, rmErr), rmErr);
+            check("reshade unmanaged dxgi gone", !QolService::reShadeInstalled(scratch));
+            QDir(scratch.plutoniumInstance).removeRecursively();
         }
         const qint64 wd = GameLauncher::startReShadeWatchdog(settings.plutoniumInstance, err);
         check("watchdog started", wd > 0, err);
@@ -189,6 +198,15 @@ int main(int argc, char *argv[])
             other.version = QStringLiteral("1.0");
             check("card: unrelated mod is missing",
                   HomeCatalog::presenceOf(other, {}) == P::Missing);
+            // The Quality of Life row on the QoL page asks the same question.
+            check("row: v-tag against plain installed version is not an update",
+                  !VersionCompare::isUpdate(QStringLiteral("v2.16.16"), QStringLiteral("2.16.16")));
+            check("row: colour-coded installed version is not an update",
+                  !VersionCompare::isUpdate(QStringLiteral("^32.16.16"), QStringLiteral("v2.16.16")));
+            check("row: installed ahead of the release is not an update",
+                  !VersionCompare::isUpdate(QStringLiteral("v2.16.16"), QStringLiteral("v2.16.14")));
+            check("row: a newer release is an update",
+                  VersionCompare::isUpdate(QStringLiteral("v2.16.16"), QStringLiteral("v2.17.0")));
         }
 
         // ...and what the real install actually reports, for the record.

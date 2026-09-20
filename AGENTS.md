@@ -20,7 +20,9 @@ src/                 app code (upstream layout kept so upstream merges stay poss
 src/Version.h        version and every brand string, URL and feed address
 src/QolService.*     the series: mod state, packs, controller icons, ReShade install
 src/pages/QolPage.*  the "Quality of Life" sidebar page
-src/GameLauncher.*   LAN launch (bootstrapper), online launch (plutonium://), watchdog
+src/GameLauncher.*   LAN and online launch (both the bootstrapper), ReShade watchdog
+src/PlutoniumAuth.*  Plutonium account: saved token, validate, mint a session token
+src/LoginDialog.*    sign-in box, shown only when online play has no account
 src/Theme.cpp        kThemes table: 3 upstream themes + 12 ported from the 1.x app
 resources/reshade/   dxgi.dll and the presets, embedded, written to <pluto>\bin
 resources/tools/     reshade-watchdog.ps1, embedded, unpacked to <exe>\tools\
@@ -39,11 +41,29 @@ are Portuguese and `resources/i18n/*.json` map them. Any string we add is Englis
 source text and simply has no translation, which is fine. Renaming an upstream
 literal breaks its translation in four files.
 
-**Online launch is the `plutonium://play/<id>` handler, never the bootstrapper.**
-The bootstrapper started directly has no login and answers 401. `launchOnline()`
-refuses when the configured Plutonium folder is not `%LOCALAPPDATA%\Plutonium`,
-because the handler always starts the registered install. A mod cannot be
-pre-loaded online; `fs_game` is LAN only.
+**Online launch signs itself and starts the bootstrapper. No launcher, no
+handler.** The bootstrapper has no login of its own: it wants a session token as
+`-token <16 hex>` and without one it dies on `Could not authenticate to
+Plutonium: non-success status code: 401`. Minting that token is the only thing
+the official launcher was doing for us, so `PlutoniumAuth` does it instead:
+
+* `GET /api/auth/validate` and `POST /api/auth/session` on `nix.plutonium.pw`,
+  authorised with `Authorization: UserToken <user token>`.
+* The user token is the account's, stored DPAPI-encrypted (current user) in
+  `<plutonium>\config.json` under `token` — the same file, key and format the
+  official launcher uses, so a login in either place works in both.
+* `PlutoniumAuth::tokenRoot()` reads the configured install first and falls back
+  to `%LOCALAPPDATA%\Plutonium`, so a portable kit still finds an existing login.
+* `LoginDialog` appears only when there is no usable account, and the launch
+  continues by itself afterwards.
+
+**The API user agent must stay exactly `Nix/3.0`.** The service is behind a
+filter that 403s a challenge page at anything else — `nix/3.0` and `Nix/3.1`
+included, and our own user agent too. It is the protocol's client identity, not
+a preference. Change it and every online launch is a 401 again.
+
+A mod still cannot be pre-loaded online; `fs_game` is LAN only. Any Plutonium
+root with a bootstrapper works now, registered or not.
 
 **Mode ids for T4 and T5 Zombies are `t4sp` and `t5sp`.** `t4zm`/`t5zm` do not
 exist; the bootstrapper prints usage and quits, which looks like a flash and no game.
@@ -70,9 +90,21 @@ powershell -ExecutionPolicy Bypass -File scripts\build.ps1 -Clean
 dist\QualityOfLifeModManager.exe -selftest -plutoniumdir <throwaway root>
 ```
 
-`-selftest` exercises ReShade install and remove, watchdog unpack and start, the
-handler probe and every theme, one PASS/FAIL line each. Screenshots without a display:
-set `QOL_SCREENSHOT=<png>` and `QOL_PAGE=<index>` and run the exe.
+`-selftest` exercises ReShade install and remove, watchdog unpack and start and
+every theme, one PASS/FAIL line each, and reports the signed-in Plutonium
+account as an INFO line (never a failure: a throwaway root has none).
+Screenshots without a display: set `QOL_SCREENSHOT=<png>` and `QOL_PAGE=<index>`
+and run the exe.
+
+To prove a real online launch without touching the GUI:
+
+```powershell
+dist\QualityOfLifeModManager.exe -nogui -online -gameid T6 -mode ZM `
+    -plutoniumdir "$env:LOCALAPPDATA\Plutonium" -gamedir "<Black Ops II folder>"
+```
+
+It prints the pid it started. A pass is a `Plutonium T6 Zombies (rNNNN)` window
+whose parent is the app, with no `plutonium-launcher-win32.exe` in the tree.
 
 ## Releasing
 
@@ -89,4 +121,7 @@ set `QOL_SCREENSHOT=<png>` and `QOL_PAGE=<index>` and run the exe.
 * Zombies Declassified installs through its own manifest via the Mods page; there is
   no in-app verifier for its 9 GB payload.
 * Live game testing of every launch path on a real install has not been done from
-  this build. The handler probe and LAN argument construction are the upstream's.
+  this build. LAN argument construction is the upstream's. Online launch was
+  proven live on 2026-09-20 for T6 Zombies (window up, no launcher process, no
+  401); T4, T5 and IW5 online use the identical code path with a different mode
+  id but have not been booted.

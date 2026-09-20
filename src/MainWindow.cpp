@@ -1,4 +1,6 @@
 #include "MainWindow.h"
+#include "LoginDialog.h"
+#include "PlutoniumAuth.h"
 #include "AnimatedLogo.h"
 #include "Dialogs.h"
 #include "GameCatalog.h"
@@ -215,8 +217,6 @@ MainWindow::MainWindow(QWidget *parent)
     connect(m_serverPage, &ServerPage::stopServerRequested, this, &MainWindow::onStopServer);
     connect(&m_processPollTimer, &QTimer::timeout, this, &MainWindow::onPollRunningProcess);
     m_processPollTimer.setInterval(2000);
-    connect(&m_onlineAdoptTimer, &QTimer::timeout, this, &MainWindow::onAdoptOnlineGame);
-    m_onlineAdoptTimer.setInterval(1000);
 
     applyHomeVisibility();
     if (m_settings.homeEnabled)
@@ -615,7 +615,19 @@ void MainWindow::onLaunchOnline(const QString &gameId, const QString &mode)
     m_settings.gameId = gameId;
     m_settings.saveToIni();
 
-    const GameLauncher::Result result = GameLauncher::launchOnline(m_settings);
+    GameLauncher::Result result = GameLauncher::launchOnline(m_settings);
+    if (result.needsLogin) {
+        // No account signed in yet, or the saved one expired. Ask once, then
+        // launch straight away so one click on Play online still lands in game.
+        LoginDialog dlg(PlutoniumAuth::tokenRoot(m_settings.plutoniumInstance), this);
+        if (dlg.exec() != QDialog::Accepted)
+            return;
+        if (m_settings.username.isEmpty() && !dlg.username().isEmpty()) {
+            m_settings.username = dlg.username();
+            m_settings.saveToIni();
+        }
+        result = GameLauncher::launchOnline(m_settings);
+    }
     if (result.hasError) {
         if (!result.errorText.isEmpty())
             Dialogs::error(this, result.errorText);
@@ -628,29 +640,12 @@ void MainWindow::onLaunchOnline(const QString &gameId, const QString &mode)
         if (!GameLauncher::startReShadeWatchdog(m_settings.plutoniumInstance, err))
             Dialogs::error(this, err);
     }
-    // The launcher owns the process from here. Adopt it once the bootstrapper
-    // appears under the Plutonium folder so Stop and the running state work.
+    // We started the bootstrapper ourselves, so the pid is ours to track: Stop
+    // and the running state work exactly as they do for a LAN launch.
+    m_runningPid = result.pid;
     m_runningGameId = gameId;
-    m_onlineAdoptTries = 0;
-    m_onlineAdoptTimer.start();
-}
-
-void MainWindow::onAdoptOnlineGame()
-{
-    // The launcher exe lives in the same bin folder and stays open; the game is
-    // the bootstrapper, so match on its name.
-    const qint64 live = GameLauncher::findProcessByName(QStringLiteral("plutonium-bootstrapper-win32.exe"));
-    if (live > 0) {
-        m_onlineAdoptTimer.stop();
-        m_runningPid = live;
-        m_playPage->setRunning(true);
-        m_processPollTimer.start();
-        return;
-    }
-    if (++m_onlineAdoptTries > 120) { // two minutes: the launcher was closed or login failed
-        m_onlineAdoptTimer.stop();
-        m_runningGameId.clear();
-    }
+    m_playPage->setRunning(true);
+    m_processPollTimer.start();
 }
 
 void MainWindow::onStopGame(const QString &)

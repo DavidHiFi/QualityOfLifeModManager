@@ -17,6 +17,8 @@ set(SOURCES
     src/AppSettings.cpp
     src/Storage.cpp
     src/GameLauncher.cpp
+    src/PlutoniumAuth.cpp
+    src/LoginDialog.cpp
     src/ConfigMaker.cpp
     src/ArchiveTool.cpp
     src/Downloader.cpp
@@ -51,6 +53,8 @@ set(HEADERS
     src/AppSettings.h
     src/Storage.h
     src/GameLauncher.h
+    src/PlutoniumAuth.h
+    src/LoginDialog.h
     src/ConfigMaker.h
     src/ArchiveTool.h
     src/Downloader.h
@@ -104,6 +108,17 @@ set_target_properties(LanLauncherQt PROPERTIES OUTPUT_NAME "QualityOfLifeModMana
 
 if (WIN32)
     set_target_properties(LanLauncherQt PROPERTIES WIN32_EXECUTABLE TRUE)
+    # src/Version.h stays the one place the version is written; read it back so
+    # the exe carries a version resource too (file properties, Apps & features).
+    file(READ "${CMAKE_CURRENT_SOURCE_DIR}/src/Version.h" _version_header)
+    string(REGEX MATCH "#define CLL_VERSION \"([0-9]+\\.[0-9]+\\.[0-9]+)\"" _m "${_version_header}")
+    set(APP_VERSION "${CMAKE_MATCH_1}")
+    if (NOT APP_VERSION)
+        message(FATAL_ERROR "CLL_VERSION not found in src/Version.h")
+    endif()
+    string(REPLACE "." "," APP_VERSION_COMMAS "${APP_VERSION},0")
+    set(APP_NAME "Quality of Life Mod Manager")
+    set(APP_AUTHOR "DavidHiFi")
     set(APP_ICON "${CMAKE_CURRENT_SOURCE_DIR}/resources/icons/icon.ico")
     if (EXISTS "${APP_ICON}")
         configure_file(
@@ -114,6 +129,11 @@ if (WIN32)
     else()
         message(WARNING "resources/icons/icon.ico not found — exe will have the default icon")
     endif()
+endif()
+
+if (WIN32)
+    # crypt32: DPAPI, for the saved Plutonium account token (PlutoniumAuth).
+    target_link_libraries(LanLauncherQt PRIVATE crypt32)
 endif()
 
 if (MINGW)

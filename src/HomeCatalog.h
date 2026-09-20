@@ -50,7 +50,8 @@ enum class Presence { Missing, Installed, Update };
 
 struct LocalInstall {
     QString sourceUrl;
-    QString releaseVersion;
+    QString releaseVersion; // the release tag it was fetched from ("beta2", "v1.2")
+    QString modVersion;     // the author's own version from mod.json ("2.0")
     QString shortHash;
     QString folder;
     QString gameCode;

@@ -5,6 +5,7 @@
 #include "MainWindow.h"
 #include "QolService.h"
 #include "PlutoniumAuth.h"
+#include "HomeCatalog.h"
 
 #include <QApplication>
 #include <QGuiApplication>
@@ -133,6 +134,21 @@ int main(int argc, char *argv[])
         check("reshade vault present", QDir(QolService::reShadeVault(settings)).exists());
         check("reshade remove", QolService::removeReShade(settings, err), err);
         check("reshade dxgi gone", !QolService::reShadeInstalled(settings));
+        // The regression: ReShade in bin with no manifest to remove it by (put
+        // there by hand, by a repair, or by a script). Remove used to delete
+        // nothing and still report success, so the button never changed.
+        {
+            const QString bin = QDir(settings.plutoniumInstance).filePath(QStringLiteral("bin"));
+            QDir().mkpath(bin);
+            QFile stray(QDir(bin).filePath(QStringLiteral("dxgi.dll")));
+            const bool staged = stray.open(QIODevice::WriteOnly | QIODevice::Truncate)
+                                && stray.write("not really reshade") > 0;
+            stray.close();
+            check("reshade unmanaged staged", staged && QolService::reShadeInstalled(settings));
+            check("reshade remove without a manifest",
+                  QolService::removeReShade(settings, err), err);
+            check("reshade unmanaged dxgi gone", !QolService::reShadeInstalled(settings));
+        }
         const qint64 wd = GameLauncher::startReShadeWatchdog(settings.plutoniumInstance, err);
         check("watchdog started", wd > 0, err);
         if (wd > 0) GameLauncher::stopReShadeWatchdog();
@@ -142,6 +158,54 @@ int main(int argc, char *argv[])
             check("theme " + key, Theme::token("BG").startsWith('#') && !Theme::displayName(key).isEmpty(), Theme::displayName(key));
         }
         check("series has t6", QolService::seriesFor("t6").released);
+
+        // Home card state. These are the cases that used to leave a card saying
+        // "Update" forever, so they are checked, not just eyeballed.
+        {
+            auto presence = [](const QString &catalogVer, const QString &modVer,
+                               const QString &releaseVer) {
+                HomeCatalog::Mod m;
+                m.url = QStringLiteral("https://github.com/Owner/Repo");
+                m.version = catalogVer;
+                HomeCatalog::LocalInstall li;
+                li.sourceUrl = QStringLiteral("https://github.com/Owner/Repo/releases/latest/download/manifest.json");
+                li.modVersion = modVer;
+                li.releaseVersion = releaseVer;
+                return HomeCatalog::presenceOf(m, {li});
+            };
+            using P = HomeCatalog::Presence;
+            check("card: release tag beta2 vs version 2.0 is installed",
+                  presence("2.0", "2.0", "beta2") == P::Installed);
+            check("card: tag-only beta2 against 2.0 is not an update",
+                  presence("2.0", QString(), "beta2") == P::Installed);
+            check("card: local newer than catalog is installed",
+                  presence("2.16.14", "2.16.16", QString()) == P::Installed);
+            check("card: catalog newer than local is an update",
+                  presence("2.16.20", "2.16.16", QString()) == P::Update);
+            check("card: v-prefixed tag matches plain version",
+                  presence("1.2", QString(), "v1.2") == P::Installed);
+            HomeCatalog::Mod other;
+            other.url = QStringLiteral("https://github.com/Someone/Else");
+            other.version = QStringLiteral("1.0");
+            check("card: unrelated mod is missing",
+                  HomeCatalog::presenceOf(other, {}) == P::Missing);
+        }
+
+        // ...and what the real install actually reports, for the record.
+        {
+            const HomeCatalog::Catalog cat = HomeCatalog::load();
+            const HomeCatalog::InstallIndex idx =
+                HomeCatalog::scanInstalled(settings.plutoniumInstance);
+            for (const HomeCatalog::Mod &m : cat.mods) {
+                const HomeCatalog::Presence p = HomeCatalog::presenceOf(m, idx);
+                note("card " + m.id,
+                     QStringLiteral("catalog %1 -> %2").arg(
+                         m.version,
+                         p == HomeCatalog::Presence::Update      ? QStringLiteral("UPDATE")
+                         : p == HomeCatalog::Presence::Installed ? QStringLiteral("installed")
+                                                                 : QStringLiteral("not installed")));
+            }
+        }
         return failures == 0 ? 0 : 2;
     }
 

@@ -542,10 +542,40 @@ bool installReShade(const AppSettings &s, QString &error)
 
 bool removeReShade(const AppSettings &s, QString &error)
 {
+    if (const QString g = runningGame(); !g.isEmpty()) {
+        error = QObject::tr("Close Plutonium first (%1 is running).").arg(g);
+        return false;
+    }
+    // The watchdog puts back anything that leaves bin, so it has to go first or
+    // it would undo this removal a second later.
+    GameLauncher::stopReShadeWatchdog();
+
     const QString bin = QDir(s.plutoniumInstance).filePath(QStringLiteral("bin"));
     if (!removeManifest(s, QStringLiteral("reshade"), bin, error))
         return false;
+    // The manifest only covers what this app installed. ReShade also arrives by
+    // hand, from a Plutonium repair, or from a script that restores bin, and
+    // then there is no manifest at all - which used to make Remove a silent
+    // no-op that still reported success. Remove asks for ReShade to be gone
+    // from bin, so take the whole known set either way.
+    for (const QString &f : kReShadeFiles) {
+        const QString full = QDir(bin).filePath(f);
+        if (QFileInfo::exists(full) && !QFile::remove(full)) {
+            error = QObject::tr("Could not delete %1. Close Plutonium and any ReShade "
+                                "overlay, then try again.")
+                        .arg(QDir::toNativeSeparators(full));
+            return false;
+        }
+    }
     QDir(reShadeVault(s)).removeRecursively();
+
+    // Never report success on a removal that did not happen.
+    if (reShadeInstalled(s)) {
+        error = QObject::tr("ReShade is still in %1 after removing it. Something is "
+                            "putting it back - stop the ReShade watchdog and try again.")
+                    .arg(QDir::toNativeSeparators(bin));
+        return false;
+    }
     return true;
 }
 

@@ -40,6 +40,46 @@ QString normVer(QString s)
     return s;
 }
 
+// T6 mod names and versions carry inline colour codes: "^5Quality Of Life",
+// "^32.16.16". The regex needs the caret escaped for the regex engine, so the
+// C++ literal needs two backslashes.
+QString stripColorCodes(QString s)
+{
+    return s.remove(QRegularExpression(QStringLiteral("\\^[0-9]")));
+}
+
+// A version we are willing to reason about: digits and dots only, after the
+// optional leading "v". Release tags like "beta2" deliberately fail this.
+bool isComparableVersion(const QString &normalised)
+{
+    static const QRegularExpression re(QStringLiteral("^[0-9]+(\\.[0-9]+)*$"));
+    return re.match(normalised).hasMatch();
+}
+
+// -1 a<b, 0 equal, 1 a>b. Only valid for two isComparableVersion strings.
+int compareVersions(const QString &a, const QString &b)
+{
+    const QStringList pa = a.split(QLatin1Char('.'));
+    const QStringList pb = b.split(QLatin1Char('.'));
+    for (int i = 0; i < qMax(pa.size(), pb.size()); ++i) {
+        const int va = i < pa.size() ? pa.at(i).toInt() : 0;
+        const int vb = i < pb.size() ? pb.at(i).toInt() : 0;
+        if (va != vb)
+            return va < vb ? -1 : 1;
+    }
+    return 0;
+}
+
+// The author's version from a mod folder's mod.json, colour codes stripped.
+QString modJsonVersion(const QString &modDir)
+{
+    QFile f(QDir(modDir).filePath(QStringLiteral("mod.json")));
+    if (!f.open(QIODevice::ReadOnly))
+        return {};
+    const QJsonObject o = QJsonDocument::fromJson(f.readAll()).object();
+    return stripColorCodes(o.value(QStringLiteral("version")).toString()).trimmed();
+}
+
 QString githubRepoKey(const QString &url)
 {
     const QUrl u(url);
@@ -309,6 +349,10 @@ InstallIndex scanInstalled(const QString &plutoniumRoot)
         it.shortHash = o.value(QStringLiteral("shortHash")).toString();
         it.folder = folder;
         it.gameCode = gameCode;
+        // The catalog quotes the author's version, so carry that too: the
+        // release tag it came from is often a different naming scheme entirely
+        // ("beta2" for a mod whose mod.json says 2.0).
+        it.modVersion = modJsonVersion(QFileInfo(path).absolutePath());
         if (it.sourceUrl.isEmpty() && it.releaseVersion.isEmpty())
             return;
         out << it;
@@ -335,15 +379,14 @@ InstallIndex scanInstalled(const QString &plutoniumRoot)
             if (!f.open(QIODevice::ReadOnly))
                 continue;
             const QJsonObject o = QJsonDocument::fromJson(f.readAll()).object();
-            QString name = o.value(QStringLiteral("name")).toString();
-            name.remove(QRegularExpression(QStringLiteral("\^[0-9]")));
+            const QString name = stripColorCodes(o.value(QStringLiteral("name")).toString());
             if (name.compare(QLatin1String("Quality Of Life"), Qt::CaseInsensitive) != 0
                 && folder.compare(QLatin1String("zm_qol"), Qt::CaseInsensitive) != 0)
                 continue;
             LocalInstall it;
             it.sourceUrl = QStringLiteral("https://github.com/DavidHiFi/T6-QoL");
-            it.releaseVersion = o.value(QStringLiteral("version")).toString();
-            it.releaseVersion.remove(QRegularExpression(QStringLiteral("\^[0-9]")));
+            it.modVersion = stripColorCodes(o.value(QStringLiteral("version")).toString()).trimmed();
+            it.releaseVersion = it.modVersion;
             it.folder = folder;
             it.gameCode = code;
             out << it;
@@ -352,15 +395,36 @@ InstallIndex scanInstalled(const QString &plutoniumRoot)
     return out;
 }
 
+// Offer an update only when we can show the catalog is genuinely ahead of what
+// is installed. Anything less certain reads as Installed, because a card that
+// says "Update" forever - and still says it after the user updates - is worse
+// than one that occasionally stays quiet about a new release.
 Presence presenceOf(const Mod &mod, const InstallIndex &index)
 {
     for (const LocalInstall &it : index) {
         if (!sameOrigin(mod.url, it.sourceUrl))
             continue;
+
         const QString catalogVer = normVer(mod.version);
-        const QString localVer = normVer(it.releaseVersion);
-        if (!catalogVer.isEmpty() && !localVer.isEmpty() && catalogVer != localVer)
-            return Presence::Update;
+        if (catalogVer.isEmpty())
+            return Presence::Installed;
+
+        // mod.json first: the catalog quotes the author's version, so that is
+        // the like-for-like comparison. The release tag is the fallback, and
+        // often is not a version at all.
+        for (const QString &raw : {it.modVersion, it.releaseVersion}) {
+            const QString localVer = normVer(raw);
+            if (localVer.isEmpty())
+                continue;
+            if (localVer == catalogVer)
+                return Presence::Installed;
+            if (!isComparableVersion(localVer) || !isComparableVersion(catalogVer))
+                continue; // e.g. "beta2" against "2.0": not the same scheme
+            // Strictly newer upstream is the only thing worth a prompt; an
+            // install ahead of the catalog is not out of date.
+            return compareVersions(catalogVer, localVer) > 0 ? Presence::Update
+                                                             : Presence::Installed;
+        }
         return Presence::Installed;
     }
     return Presence::Missing;

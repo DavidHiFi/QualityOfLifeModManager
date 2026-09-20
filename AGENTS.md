@@ -22,6 +22,7 @@ src/QolService.*     the series: mod state, packs, controller icons, ReShade ins
 src/pages/QolPage.*  the "Quality of Life" sidebar page
 src/GameLauncher.*   LAN and online launch (both the bootstrapper), ReShade watchdog
 src/PlutoniumAuth.*  Plutonium account: saved token, validate, mint a session token
+src/VersionCompare.h the one rule for "is there an update", shared by both callers
 src/LoginDialog.*    sign-in box, shown only when online play has no account
 src/Theme.cpp        kThemes table: 3 upstream themes + 12 ported from the 1.x app
 resources/reshade/   dxgi.dll and the presets, embedded, written to <pluto>\bin
@@ -65,6 +66,28 @@ a preference. Change it and every online launch is a 401 again.
 A mod still cannot be pre-loaded online; `fs_game` is LAN only. Any Plutonium
 root with a bootstrapper works now, registered or not.
 
+**Never decide "there is an update" by comparing two version strings for
+inequality.** Use `VersionCompare::isUpdate(have, latest)`, which only says yes
+when both sides parse as a plain dotted version and `latest` is strictly ahead.
+The strings come from three sloppy sources that do not agree: a GitHub release
+tag (`beta2`, `v1.2`), a `mod.json` version an author typed (`^32.16.16`), and
+the catalog's `version`. Comparing them raw is what made every Home card say
+"Update" forever, including right after the user updated. A card that is briefly
+quiet about a new release is a much smaller failure than one that cries wolf
+permanently. `HomeCatalog::presenceOf` prefers the installed `mod.json` version,
+because that is what the catalog quotes; the release tag is only a fallback.
+
+**Removing something must remove it, not just un-apply a manifest.**
+`installed-<kind>.txt` lists what this app installed, and for texture and sound
+packs that manifest *is* the installed-state test, so the two cannot disagree.
+ReShade is different: `reShadeInstalled()` checks for `bin\dxgi.dll` on disk, so
+when ReShade arrived any other way there was no manifest, Remove deleted
+nothing, returned success, and the button still said Remove. `removeReShade`
+now takes the whole `kReShadeFiles` set from `bin` regardless, stops the
+watchdog first (it would put the files straight back), refuses while a game is
+running rather than failing on a locked DLL, and re-checks the result before
+reporting success.
+
 **Mode ids for T4 and T5 Zombies are `t4sp` and `t5sp`.** `t4zm`/`t5zm` do not
 exist; the bootstrapper prints usage and quits, which looks like a flash and no game.
 
@@ -90,9 +113,12 @@ powershell -ExecutionPolicy Bypass -File scripts\build.ps1 -Clean
 dist\QualityOfLifeModManager.exe -selftest -plutoniumdir <throwaway root>
 ```
 
-`-selftest` exercises ReShade install and remove, watchdog unpack and start and
-every theme, one PASS/FAIL line each, and reports the signed-in Plutonium
-account as an INFO line (never a failure: a throwaway root has none).
+`-selftest` exercises ReShade install and remove, watchdog unpack and start,
+every theme, and the Home card / QoL row update rules, one PASS/FAIL line each.
+It reports the signed-in Plutonium account and what each catalog mod currently
+resolves to as INFO lines (never failures: a throwaway root has neither). The
+ReShade checks need no game running - `removeReShade` refuses while one is, on
+purpose, because the DLL is loaded.
 Screenshots without a display: set `QOL_SCREENSHOT=<png>` and `QOL_PAGE=<index>`
 and run the exe.
 

@@ -205,6 +205,8 @@ int main(int argc, char *argv[])
         }
         const qint64 wd = GameLauncher::startReShadeWatchdog(rs.plutoniumInstance, err);
         check("watchdog started", wd > 0, err);
+        check("watchdog verifier unpacked",
+              QDir(QCoreApplication::applicationDirPath()).exists(QStringLiteral("tools/reshade-verify.ps1")));
         if (wd > 0) GameLauncher::stopReShadeWatchdog();
         QDir(rs.plutoniumInstance).removeRecursively();
         check("themes >= 15", Theme::names().size() >= 15, QString::number(Theme::names().size()));

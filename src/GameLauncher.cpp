@@ -341,6 +341,9 @@ qint64 startReShadeWatchdog(const QString &plutoniumRoot, QString &error)
     // One watchdog per app session is enough; it watches every launch.
     if (const qint64 live = runningReShadeWatchdog())
         return live;
+    QString verifier;
+    if (!unpackTool(QStringLiteral("reshade-verify.ps1"), verifier, error))
+        return 0;
     QString script;
     if (!unpackTool(QStringLiteral("reshade-watchdog.ps1"), script, error))
         return 0;

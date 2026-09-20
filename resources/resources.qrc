@@ -43,6 +43,7 @@
         <file>media/t7_logo.png</file>
         <file>media/t7_bg_mp.jpg</file>
         <file alias="qol_home.json">../qol_home.json</file>
+        <file>tools/reshade-verify.ps1</file>
         <file>tools/reshade-watchdog.ps1</file>
         <file>reshade/dxgi.dll</file>
         <file>reshade/ReShade.ini</file>

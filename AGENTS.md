@@ -159,8 +159,12 @@ redirect stdout to a file rather than reading it off the pipe.
 ## Releasing
 
 1. Bump `CLL_VERSION` in `src/Version.h`.
-2. Build, zip `dist\` as `QualityOfLifeModManager-portable.zip`, and attach both the
-   zip and the bare `QualityOfLifeModManager.exe` to a GitHub release tagged `vX.Y.Z`.
+2. `powershell -ExecutionPolicy Bypass -File scripts\build.ps1 -Clean`, then
+   `powershell -ExecutionPolicy Bypass -File scripts\build-setup.ps1`, which writes
+   `release\QualityOfLifeModManagerSetup.exe` and `release\QualityOfLifeModManager-portable.zip`
+   from the same staged tree. Attach the Setup, the zip and the bare
+   `QualityOfLifeModManager.exe` (the in-app updater's file - it cannot run on its
+   own) to a GitHub release tagged `vX.Y.Z`. The release notes lead with the Setup.
 3. `python scripts\gen_update.py -o qol_update.json`, commit, push. The app compares
    its version to the `launcher` item and offers the exe.
 

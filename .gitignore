@@ -3,6 +3,7 @@ build-static/
 build-release/
 dist/
 dist-static/
+release/
 CMakeLists.txt.user
 *.user
 .qtc_clangd/

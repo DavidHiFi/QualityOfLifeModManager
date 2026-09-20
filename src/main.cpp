@@ -134,6 +134,17 @@ int main(int argc, char *argv[])
         }
         for (const UpdateService::Pending &p : UpdateService::detect(cat, settings))
             out << "PENDING " << p.title << " -> " << p.remote.version << Qt::endl;
+        // The Quality of Life page asks its own question, through a different
+        // path; show that too so both are visible in one run.
+        for (const QolService::SeriesMod &m : QolService::series()) {
+            if (!m.released)
+                continue;
+            QString e;
+            const QString latest = QolService::latestModVersion(m, e);
+            out << "series " << m.gameCode << " latest="
+                << (latest.isEmpty() ? QStringLiteral("(unknown: ") + e + QLatin1Char(')') : latest)
+                << ", installed " << QolService::installedModVersion(settings, m) << Qt::endl;
+        }
         return 0;
     }
 

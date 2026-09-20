@@ -15,6 +15,7 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QRegularExpression>
+#include <QUrl>
 #include <QTextStream>
 
 namespace {

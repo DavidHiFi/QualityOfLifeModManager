@@ -168,6 +168,57 @@ redirect stdout to a file rather than reading it off the pipe.
 3. `python scripts\gen_update.py -o qol_update.json`, commit, push. The app compares
    its version to the `launcher` item and offers the exe.
 
+### Publishing when api.github.com will not resolve
+
+`gh release create` cannot run on this machine and `gh auth status` reports the
+token as invalid, which is misleading: `GH_TOKEN` is fine, the local resolver
+(10.64.0.1) just hands back dead addresses for the API hosts. Pin known-good
+ones per call instead - never edit DNS or the hosts file:
+
+```
+api.github.com     140.82.112.5     (.113.5, .114.5 also work)
+uploads.github.com 4.237.22.36      (this is the real alambic origin; the
+                                     140.82.112.9 front answers 403 Unicorn
+                                     for asset uploads)
+```
+
+```bash
+curl -sS --resolve api.github.com:443:140.82.112.5   -X POST -H "Authorization: Bearer $GH_TOKEN"   -H "Accept: application/vnd.github+json"   https://api.github.com/repos/DavidHiFi/QualityOfLifeModManager/releases   -d '{"tag_name":"vX.Y.Z","name":"...","body":"...","draft":false}'
+
+curl -sS --resolve uploads.github.com:443:4.237.22.36   -X POST -H "Authorization: Bearer $GH_TOKEN"   -H "Content-Type: application/octet-stream" --data-binary @<file>   "https://uploads.github.com/repos/DavidHiFi/QualityOfLifeModManager/releases/<id>/assets?name=<file>"
+```
+
+Read the release back afterwards and compare every asset `size` against the
+local file. A 201 is not proof on its own.
+
+**NSIS lives at `H:\Plutonium	ools\w64devkit\share
+sis`**, not in Program
+Files. Pass that root as `-NsisDir`; `makensis.exe` alone (the copy in
+`w64devkitin`) fails with "error setting default stub" because it looks for
+`Stubs\` beside itself.
+
+## Self-update
+
+`src/SelfUpdate.*` owns replacing the .exe, and it exists because every part of
+that step fails quietly. Windows will not overwrite a running program, so the
+swap must close the app's **other** copies first - matched by full image path,
+so a portable copy elsewhere is left alone - and the exiting instance must
+leave through `ExitProcess`, because one that stalls on the way out keeps the
+write lock and poisons every later update on that machine.
+
+Two rules worth keeping:
+
+* **Never stamp a version you have not started.** `reconcile()` decides whether
+  an update worked by comparing `CLL_VERSION` against the pending record, not
+  by trusting a stamp the previous build wrote about itself.
+* **Never relaunch as though a failed swap succeeded.** After two failures at
+  one version the automatic check stops offering it and the app says why. That
+  is the only thing standing between a locked file and an endless
+  download-restart-offer loop.
+
+The helper gets **native** separators. `cmd`'s `copy` tolerates forward slashes;
+its `del` does not, which silently leaves a 12 MB staged build behind.
+
 ## What is not done
 
 * The 1.x app's backups page (per-kind backup and restore) has no equivalent yet;

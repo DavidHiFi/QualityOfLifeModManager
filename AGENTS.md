@@ -191,10 +191,9 @@ curl -sS --resolve uploads.github.com:443:4.237.22.36   -X POST -H "Authorizatio
 Read the release back afterwards and compare every asset `size` against the
 local file. A 201 is not proof on its own.
 
-**NSIS lives at `H:\Plutonium	ools\w64devkit\share
-sis`**, not in Program
-Files. Pass that root as `-NsisDir`; `makensis.exe` alone (the copy in
-`w64devkitin`) fails with "error setting default stub" because it looks for
+**NSIS lives at `H:\Plutonium\tools\w64devkit\share\nsis`**, not in
+Program Files. Pass that root as `-NsisDir`; `makensis.exe` alone (the copy in
+`w64devkit\bin`) fails with "error setting default stub" because it looks for
 `Stubs\` beside itself.
 
 ## Self-update

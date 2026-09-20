@@ -5,10 +5,10 @@
       "id": "launcher",
       "name": "QualityOfLifeModManager.exe",
       "repo": "DavidHiFi/QualityOfLifeModManager",
-      "version": "v2.1.4",
+      "version": "v2.1.5",
       "url": "https://github.com/DavidHiFi/QualityOfLifeModManager/releases/latest/download/QualityOfLifeModManager.exe",
-      "hash": "1e4cf22d24b81bc5557a4ab8ca343b1157ad879e",
-      "size": 12695830
+      "hash": "1dec19eae62ceb2d21510782c6014446b317b5d8",
+      "size": 12706258
     },
     {
       "id": "pu",

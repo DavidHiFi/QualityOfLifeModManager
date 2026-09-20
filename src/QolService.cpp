@@ -33,6 +33,40 @@ const QStringList kControllerNames = {
     "xenonbutton_dpad_left.iwi", "xenonbutton_dpad_right.iwi", "xenonbutton_dpad_ud.iwi",
     "xenonbutton_dpad_rl.iwi"};
 
+// The 18 first-person arm re-textures for the Victis, Mob of the Dead and
+// Richtofen crews. The user wants stock arms on every map, so a texture
+// install must never lay these down.
+const QStringList kViewArmNames = {
+    "~-gviewarm_zom_armhair_alpha_c.iwi",
+    "~-gviewarm_zom_deluca_longsleeve_c.iwi", "viewarm_zom_deluca_longsleeve_n.iwi",
+    "~-gviewarm_zom_engineer_c.iwi", "viewarm_zom_engineer_n.iwi",
+    "~-gviewarm_zom_handsome_barea~031b2e1b.iwi",
+    "~-gviewarm_zom_handsome_barearm_left_c.iwi", "viewarm_zom_handsome_barearm_n.iwi",
+    "~-gviewarm_zom_oldman_c.iwi", "viewarm_zom_oldman_n.iwi",
+    "~-gviewarm_zom_oleary_shortsleeve_c.iwi", "viewarm_zom_oleary_shortsleeve_n.iwi",
+    "~-gviewarm_zom_reporter_c.iwi", "viewarm_zom_reporter_n.iwi",
+    "~-gviewarm_zom_richtofen_l_c.iwi", "~-gviewarm_zom_richtofen_r_c.iwi",
+    "viewarm_zom_richtofen_n.iwi",
+    "~~-gviewarm_zom_strands_alpha~b94bebe4.iwi"};
+
+// The pack's 41 hash-named overrides. A numerically-named .iwi binds its pixels
+// onto whatever stock image owns that hash, so these paint custom art
+// (flagstone paving, house siding, wallpaper, signage, blinds) onto stock
+// texture slots the base game never used them on. Published packs still carry
+// them, so refuse them at the copy rather than trusting the archive.
+const QStringList kHashBoundNames = {
+    "184130943.iwi", "203218850.iwi", "213664688.iwi", "248893139.iwi",
+    "310690366.iwi", "387107309.iwi", "414497708.iwi", "712299166.iwi",
+    "749883228.iwi", "1242089752.iwi", "1361229722.iwi", "1402996581.iwi",
+    "2139588580.iwi", "2193983524.iwi", "2402415086.iwi", "2463049788.iwi",
+    "2531095777.iwi", "2532865902.iwi", "2596739401.iwi", "2652134348.iwi",
+    "2696824118.iwi", "2696825333.iwi", "2897555984.iwi", "2963536512.iwi",
+    "3009761504.iwi", "3104746560.iwi", "3113946313.iwi", "3195629244.iwi",
+    "3277816579.iwi", "3343758740.iwi", "3353894529.iwi", "3355417974.iwi",
+    "3411929122.iwi", "3449947920.iwi", "3566024970.iwi", "3718463383.iwi",
+    "3818552282.iwi", "3958649079.iwi", "3971393839.iwi", "4094420848.iwi",
+    "4238982186.iwi"};
+
 QString manifestPath(const AppSettings &s, const QString &kind)
 {
     return QDir(QolService::stateDir(s)).filePath(QStringLiteral("installed-%1.txt").arg(kind));
@@ -270,6 +304,20 @@ QString installedModVersion(const AppSettings &s, const SeriesMod &m)
 
 QString latestModVersion(const SeriesMod &m, QString &error)
 {
+    // /releases/latest redirects to /releases/tag/<tag>, which is the whole
+    // answer. Plain github.com, so this works where api.github.com is blocked
+    // or rate limited - and it is blocked outright on some machines, which
+    // left this returning nothing and the page unable to see any new release.
+    const QString target = Downloader::redirectTargetOf(
+        QStringLiteral("https://github.com/%1/releases/latest").arg(m.repo), error, 15000);
+    static const QRegularExpression re(QStringLiteral("/releases/tag/([^/?#]+)"));
+    const QRegularExpressionMatch hit = re.match(target);
+    if (hit.hasMatch()) {
+        error.clear();
+        return QUrl::fromPercentEncoding(hit.captured(1).toUtf8());
+    }
+
+    // Fall back to the API for anything that answers differently.
     const QByteArray raw = Downloader::downloadBytes(
         QStringLiteral("https://api.github.com/repos/%1/releases/latest").arg(m.repo), error, 20000);
     if (raw.isEmpty())
@@ -380,7 +428,8 @@ bool installPack(const AppSettings &s, Pack pack, const Progress &p, QString &er
     // Controller glyphs are owned by the controller pack; a texture install
     // must not overwrite the one the user chose.
     const QStringList skip = pack == Pack::Textures
-        ? kControllerNames + QStringList{QStringLiteral("hud_dpad_blood.iwi")}
+        ? kControllerNames + kViewArmNames + kHashBoundNames
+              + QStringList{QStringLiteral("hud_dpad_blood.iwi")}
         : QStringList{};
     if (!copyTree(src, packDest(s, pack), skip, written, error))
         return false;

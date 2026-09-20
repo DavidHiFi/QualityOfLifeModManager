@@ -1,1 +1,26 @@
 IDI_ICON1 ICON "@APP_ICON@"
+
+1 VERSIONINFO
+FILEVERSION    @APP_VERSION_COMMAS@
+PRODUCTVERSION @APP_VERSION_COMMAS@
+FILEOS         0x4L
+FILETYPE       0x1L
+{
+  BLOCK "StringFileInfo"
+  {
+    BLOCK "040904b0"
+    {
+      VALUE "CompanyName",      "@APP_AUTHOR@"
+      VALUE "FileDescription",  "@APP_NAME@"
+      VALUE "FileVersion",      "@APP_VERSION@"
+      VALUE "InternalName",     "QualityOfLifeModManager"
+      VALUE "OriginalFilename", "QualityOfLifeModManager.exe"
+      VALUE "ProductName",      "@APP_NAME@"
+      VALUE "ProductVersion",   "@APP_VERSION@"
+    }
+  }
+  BLOCK "VarFileInfo"
+  {
+    VALUE "Translation", 0x409, 1200
+  }
+}

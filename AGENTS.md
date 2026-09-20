@@ -161,6 +161,17 @@ redirect stdout to a file rather than reading it off the pipe.
 1. Bump `CLL_VERSION` in `src/Version.h`.
 2. Build, zip `dist\` as `QualityOfLifeModManager-portable.zip`, and attach both the
    zip and the bare `QualityOfLifeModManager.exe` to a GitHub release tagged `vX.Y.Z`.
+   The bare exe is the in-app updater's file only (`UpdateService` self-replaces just
+   the exe; the Qt DLLs beside it stay put). Run standalone it dies in the Windows
+   loader with `Qt6Gui.dll was not found` before `main` ever runs, so the app cannot
+   detect this case or prompt for a download — every release body must label the two
+   assets. Paste this at the top of every release body:
+
+   ```markdown
+   Download `QualityOfLifeModManager-portable.zip` below and unzip it — that is the app.
+   Do NOT download the bare `QualityOfLifeModManager.exe` for a fresh install: it is the
+   in-app updater's file only and running it alone fails with `Qt6Gui.dll was not found`.
+   ```
 3. `python scripts\gen_update.py -o qol_update.json`, commit, push. The app compares
    its version to the `launcher` item and offers the exe.
 

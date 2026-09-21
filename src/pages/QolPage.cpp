@@ -9,6 +9,7 @@
 
 #include <QDesktopServices>
 #include <QDir>
+#include <QFileDialog>
 #include <QFrame>
 #include <QHBoxLayout>
 #include <QLabel>
@@ -75,6 +76,11 @@ QolPage::QolPage(AppSettings &settings, QWidget *parent)
                        tr("Cinematic colour grading for every Plutonium game. Plutonium clears its bin folder on "
                           "every start, so play with the ReShade option on the game page (or start the watchdog "
                           "here) and the files are put back the moment the game opens."));
+    m_dlss = addRow(root, tr("LAN ONLY"), tr("DLSS 5 Neural Rendering"),
+                    tr("NVIDIA DLSS 5 in Black Ops II, through the DLSS5-Feeder ReShade add-on. Add-ons need the "
+                       "full build of ReShade, which the manager only puts in place for LAN - online keeps the "
+                       "stock build, whose add-on support is deliberately limited. Needs an RTX card and the "
+                       "237 MB payload imported from a folder that already has DLSS 5 installed."));
     root->addStretch();
 
     scroll->setWidget(inner);
@@ -164,7 +170,9 @@ QolPage::QolPage(AppSettings &settings, QWidget *parent)
         if (QolService::reShadeInstalled(m_settings)) {
             if (!confirm(tr("ReShade"), tr("Remove ReShade from Plutonium's bin folder?")))
                 return;
-            if (!QolService::removeReShade(m_settings, err))
+            // Remove means gone: the add-ons, the 64-bit host and the preset
+            // entries that name them go with it, not just dxgi.dll.
+            if (!QolService::ensureReShadeAbsent(m_settings, err))
                 QMessageBox::warning(this, tr("ReShade"), err);
         } else if (!QolService::installReShade(m_settings, err)) {
             QMessageBox::warning(this, tr("ReShade"), err);
@@ -175,6 +183,34 @@ QolPage::QolPage(AppSettings &settings, QWidget *parent)
         QString err;
         if (!GameLauncher::startReShadeWatchdog(m_settings.plutoniumInstance, err))
             QMessageBox::warning(this, tr("ReShade"), err);
+    });
+    connect(m_dlss.primary, &QPushButton::clicked, this, [this]() {
+        QString err;
+        if (QolService::dlssPayloadReady(m_settings)) {
+            if (!confirm(tr("DLSS 5"), tr("Remove the imported DLSS 5 payload? LAN keeps the add-on build of "
+                                          "ReShade; only DLSS stops being offered.")))
+                return;
+            QDir(QolService::reShadeLanVault(m_settings)).removeRecursively();
+            if (!QolService::applyReShadeMode(m_settings, QolService::ReShadeMode::Online, false, err)
+                && !err.isEmpty())
+                QMessageBox::warning(this, tr("DLSS 5"), err);
+            refresh();
+            return;
+        }
+        // The payload is 237 MB of NVIDIA runtimes under their own licence, so
+        // it is never shipped with this app: it is imported from a folder on
+        // this PC that already has DLSS 5 working.
+        const QString donor = QFileDialog::getExistingDirectory(
+            this, tr("Pick a game folder that already has DLSS 5 installed"),
+            m_settings.bo2.isEmpty() ? QDir::homePath() : m_settings.bo2);
+        if (donor.isEmpty())
+            return;
+        runJob(tr("Importing the DLSS 5 payload"),
+               [this, donor](QString &e, const std::function<void(const QString &, int)> &p) {
+                   p(tr("Copying the DLSS 5 runtimes"), 10);
+                   return QolService::importDlssPayload(m_settings, donor, e);
+               });
+        refresh();
     });
 
     retranslate();
@@ -294,15 +330,27 @@ void QolPage::refresh()
     m_controller.secondary->setVisible(!ctl.isEmpty());
 
     const bool rs = QolService::reShadeInstalled(m_settings);
-    m_reshade.status->setText(rs ? tr("Installed in Plutonium's bin folder.") : tr("Not installed."));
+    const bool addon = rs && QolService::addonReShadeActive(m_settings);
+    m_reshade.status->setText(!rs ? tr("Not installed.")
+                              : addon ? tr("Installed, add-on build (LAN).")
+                                      : tr("Installed, stock build (online)."));
     m_reshade.primary->setText(rs ? tr("Remove") : tr("Install"));
     m_reshade.primary->setProperty("cssClass", rs ? "danger" : "primary");
     m_reshade.primary->setEnabled(pluto);
     m_reshade.secondary->setText(tr("Start watchdog"));
     m_reshade.secondary->setVisible(rs);
 
+    const bool dlss = QolService::dlssPayloadReady(m_settings);
+    m_dlss.status->setText(dlss ? tr("Imported: %1 Used on LAN launches of Black Ops II.")
+                                      .arg(QolService::dlssPayloadSummary(m_settings))
+                                : tr("Not imported. LAN still gets the add-on build of ReShade."));
+    m_dlss.primary->setText(dlss ? tr("Remove") : tr("Import"));
+    m_dlss.primary->setProperty("cssClass", dlss ? "danger" : "primary");
+    m_dlss.primary->setEnabled(pluto);
+    m_dlss.secondary->setVisible(false);
+
     // Re-polish the buttons whose cssClass flipped.
-    for (QPushButton *b : {m_textures.primary, m_sounds.primary, m_reshade.primary}) {
+    for (QPushButton *b : {m_textures.primary, m_sounds.primary, m_reshade.primary, m_dlss.primary}) {
         b->style()->unpolish(b);
         b->style()->polish(b);
     }

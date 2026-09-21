@@ -42,6 +42,6 @@ private:
     QLabel *m_intro = nullptr;
     QLabel *m_plutoHint = nullptr;
     QList<Row> m_modRows;     // parallel to QolService::series()
-    Row m_textures, m_sounds, m_controller, m_reshade;
+    Row m_textures, m_sounds, m_controller, m_reshade, m_dlss;
     QStringList m_latest;     // cached latest tags, parallel to series()
 };

@@ -48,6 +48,43 @@ $BinDir   = Join-Path $PlutoRoot 'bin'
 # 🛑 Must match kReShadeVault in QolService.cpp exactly - that is the writer side.
 $VaultDir = Join-Path $PlutoRoot 'storage\t6\_zm_qol_installer\reshade-vault'
 
+# -----------------------------------------------------------------------------
+#  v2.16 - TWO BUILDS OF RESHADE, AND ONLY ONE OF THEM IS RIGHT FOR THIS SESSION.
+#
+#  Online play runs the stock build, which answers an add-on with "this build
+#  of ReShade has only limited add-on functionality" and loads none. LAN play
+#  runs the add-on build and, on Black Ops II, the DLSS5-Feeder add-on and its
+#  64-bit helper in bin\host64.
+#
+#  The manager decides which before it starts the game and writes the answer
+#  here. This matters to the watchdog for one reason: it restores whatever
+#  Plutonium clears out of bin, and restoring from the wrong vault would put
+#  the STOCK runtime back in the middle of a LAN session, leaving add-ons on
+#  disk that nothing will ever load.
+# -----------------------------------------------------------------------------
+$StateDir    = Join-Path $PlutoRoot 'storage\t6\_zm_qol_installer'
+$LanVaultDir = Join-Path $StateDir 'reshade-lan'
+$ActiveFile  = Join-Path $StateDir 'reshade-active.txt'
+
+function Get-ActiveMode {
+    try {
+        if (Test-Path -LiteralPath $ActiveFile) {
+            if ((Get-Content -LiteralPath $ActiveFile -Raw).Trim() -ieq 'lan') { return 'lan' }
+        }
+    } catch { }
+    return 'online'
+}
+
+# The vaults this session restores from, nearest-wins: in LAN the add-on
+# runtime and the feeder payload come first, so the stock dxgi.dll in the base
+# vault can never overwrite it.
+function Get-ActiveVaults {
+    if ((Get-ActiveMode) -eq 'lan' -and (Test-Path -LiteralPath $LanVaultDir)) {
+        return @($LanVaultDir, $VaultDir)
+    }
+    return @($VaultDir)
+}
+
 # Every executable Plutonium can put a game process behind, taken from a
 # separate resident ReShade helper's own process-detection list -
 # already proven correct across real sessions, not guessed here. One shared
@@ -101,9 +138,22 @@ function Restore-MissingReShade {
     if (-not (Test-Path -LiteralPath $BinDir)) { return 0 }
 
     $restored = 0
+    foreach ($vault in Get-ActiveVaults) {
+        $restored += Restore-FromVault $vault
+    }
+    return $restored
+}
+
+function Restore-FromVault {
+    param([string] $VaultRoot)
+    if (-not (Test-Path -LiteralPath $VaultRoot)) { return 0 }
+
+    $restored = 0
     $shaderNames = $null
-    Get-ChildItem -LiteralPath $VaultDir -Recurse -File | ForEach-Object {
-        $rel    = $_.FullName.Substring($VaultDir.Length).TrimStart('\')
+    Get-ChildItem -LiteralPath $VaultRoot -Recurse -File | ForEach-Object {
+        $rel    = $_.FullName.Substring($VaultRoot.Length).TrimStart('\')
+        # The LAN payload's own manifest is not a game file.
+        if ($rel -ieq 'payload.json') { return }
         $target = Join-Path $BinDir $rel
         if (-not (Test-Path -LiteralPath $target)) {
             if ($_.Extension -eq '.fx' -and $rel -like 'reshade-shaders\Shaders\*') {
@@ -416,6 +466,22 @@ else {
     Write-Host ("  Vault holds {0} shaders - they will be put back if Plutonium clears them." -f $vaultFx) -ForegroundColor Green
     Write-Host ''
 }
+
+# Which of the two builds this session is set up for, said out loud. A LAN
+# session that silently fell back to the stock build is the failure this line
+# exists to make obvious.
+$mode = Get-ActiveMode
+if ($mode -eq 'lan') {
+    $feeder = Join-Path $LanVaultDir 'dlss5-feed.addon32'
+    if (Test-Path -LiteralPath $feeder) {
+        Write-Host "  Mode: LAN - ReShade with full add-on support, DLSS 5 add-on included." -ForegroundColor Green
+    } else {
+        Write-Host "  Mode: LAN - ReShade with full add-on support. No DLSS 5 payload imported." -ForegroundColor Yellow
+    }
+} else {
+    Write-Host "  Mode: online - stock ReShade, add-on support limited by that build." -ForegroundColor DarkGray
+}
+Write-Host ''
 
 # -----------------------------------------------------------------------------
 #  v2.3.2 - THE WINDOW SHOWED NOTHING WHILE IT WAS WORKING.

@@ -203,6 +203,29 @@ int main(int argc, char *argv[])
                   QolService::removeReShade(scratch, rmErr), rmErr);
             check("reshade unmanaged dxgi gone", !QolService::reShadeInstalled(scratch));
         }
+        // The two builds. LAN must end up with the one that loads add-ons and
+        // online with the one that refuses them - told apart by the file that
+        // is actually in bin, never by the marker that says what should be.
+        {
+            QDir().mkpath(QDir(rs.plutoniumInstance).filePath(QStringLiteral("bin")));
+            QString e;
+            check("reshade lan applied",
+                  QolService::applyReShadeMode(rs, QolService::ReShadeMode::Lan, false, e), e);
+            check("reshade lan is the add-on build", QolService::addonReShadeActive(rs));
+            check("reshade lan mode recorded",
+                  QolService::activeReShadeMode(rs) == QolService::ReShadeMode::Lan);
+            check("reshade lan vault carries the add-on runtime",
+                  QFileInfo::exists(QDir(QolService::reShadeLanVault(rs)).filePath(QStringLiteral("dxgi.dll"))));
+            check("reshade online applied",
+                  QolService::applyReShadeMode(rs, QolService::ReShadeMode::Online, false, e), e);
+            check("reshade online is the stock build", !QolService::addonReShadeActive(rs));
+            check("reshade online mode recorded",
+                  QolService::activeReShadeMode(rs) == QolService::ReShadeMode::Online);
+            // An unticked box asks for gone, not for "the other build".
+            check("reshade absent on request", QolService::ensureReShadeAbsent(rs, e), e);
+            check("reshade really gone", !QolService::reShadeInstalled(rs));
+            check("dlss payload absent without an import", !QolService::dlssPayloadReady(rs));
+        }
         const qint64 wd = GameLauncher::startReShadeWatchdog(rs.plutoniumInstance, err);
         check("watchdog started", wd > 0, err);
         check("watchdog verifier unpacked",

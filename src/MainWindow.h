@@ -3,6 +3,7 @@
 #include <QTimer>
 
 #include "AppSettings.h"
+#include "QolService.h"
 #include "SelfUpdate.h"
 
 class QStackedWidget;
@@ -38,6 +39,11 @@ private slots:
 private:
     enum ToolIndex { ToolPlay = 0, ToolHome, ToolQol, ToolMods, ToolServer, ToolSettings, ToolAbout };
     static constexpr int kFirstTool = ToolQol; // sidebar tool buttons start here
+
+    // ReShade for the session about to start: the right build in bin, or
+    // none at all when the box is unticked.
+    void prepareReShade(QolService::ReShadeMode mode, bool wantDlss);
+    void startReShadeWatchdogIfWanted();
 
     QWidget *buildSidebar();
     QWidget *buildHeader();

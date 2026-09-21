@@ -46,6 +46,7 @@
         <file>tools/reshade-verify.ps1</file>
         <file>tools/reshade-watchdog.ps1</file>
         <file>reshade/dxgi.dll</file>
+        <file>reshade/dxgi_addon.dll</file>
         <file>reshade/ReShade.ini</file>
         <file>reshade/Cinematic Colour Grading.ini</file>
         <file>reshade/BO1.ini</file>

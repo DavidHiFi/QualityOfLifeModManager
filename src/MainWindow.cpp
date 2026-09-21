@@ -625,6 +625,31 @@ void MainWindow::syncNav()
         m_toolButtons[i]->setChecked(m_toolIndex == i + kFirstTool);
 }
 
+// The ReShade tick box is a statement about the next session, not a switch on
+// a watchdog: ticked means ReShade is there and is the right build for where
+// you are playing, unticked means it is gone. Both are made true here, before
+// the game starts, because bin cannot be written once it is running.
+void MainWindow::prepareReShade(QolService::ReShadeMode mode, bool wantDlss)
+{
+    QString err;
+    if (!m_settings.launchReShade) {
+        if (!QolService::ensureReShadeAbsent(m_settings, err) && !err.isEmpty())
+            Dialogs::error(this, err);
+        return;
+    }
+    if (!QolService::applyReShadeMode(m_settings, mode, wantDlss, err) && !err.isEmpty())
+        Dialogs::error(this, err);
+}
+
+void MainWindow::startReShadeWatchdogIfWanted()
+{
+    if (!m_settings.launchReShade)
+        return;
+    QString err;
+    if (!GameLauncher::startReShadeWatchdog(m_settings.plutoniumInstance, err))
+        Dialogs::error(this, err);
+}
+
 void MainWindow::onLaunchGame(const QString &gameId, const QString &mode)
 {
     if (m_runningPid > 0)
@@ -646,6 +671,11 @@ void MainWindow::onLaunchGame(const QString &gameId, const QString &mode)
     m_settings.gameId = gameId;
     m_settings.saveToIni();
 
+    // LAN is not signed in to anything, so it gets the add-on build of ReShade
+    // and, on Black Ops II, DLSS 5 with it. This has to happen before the game
+    // starts: once the bootstrapper has dxgi.dll open it cannot be replaced.
+    prepareReShade(QolService::ReShadeMode::Lan, gameId == QLatin1String("Black ops II"));
+
     const GameLauncher::Result result = GameLauncher::launch(m_settings, m_modsPage->selectedMod());
     if (result.hasError) {
         if (!result.errorText.isEmpty())
@@ -654,11 +684,7 @@ void MainWindow::onLaunchGame(const QString &gameId, const QString &mode)
             Dialogs::info(this, result.errorMsg, m_settings);
         return;
     }
-    if (m_settings.launchReShade) {
-        QString err;
-        if (!GameLauncher::startReShadeWatchdog(m_settings.plutoniumInstance, err))
-            Dialogs::error(this, err);
-    }
+    startReShadeWatchdogIfWanted();
     m_runningPid = result.pid;
     m_runningGameId = gameId;
     m_playPage->setRunning(true);
@@ -676,6 +702,11 @@ void MainWindow::onLaunchOnline(const QString &gameId, const QString &mode)
     else m_settings.modeId.clear();
     m_settings.gameId = gameId;
     m_settings.saveToIni();
+
+    // Online is signed in to Plutonium, so it gets the stock build and none of
+    // the add-ons: the feeder, its 64-bit host and the DLSS entries in the
+    // preset all come back out of bin before the session starts.
+    prepareReShade(QolService::ReShadeMode::Online, false);
 
     GameLauncher::Result result = GameLauncher::launchOnline(m_settings);
     if (result.needsLogin) {
@@ -697,11 +728,7 @@ void MainWindow::onLaunchOnline(const QString &gameId, const QString &mode)
             Dialogs::info(this, result.errorMsg, m_settings);
         return;
     }
-    if (m_settings.launchReShade) {
-        QString err;
-        if (!GameLauncher::startReShadeWatchdog(m_settings.plutoniumInstance, err))
-            Dialogs::error(this, err);
-    }
+    startReShadeWatchdogIfWanted();
     // We started the bootstrapper ourselves, so the pid is ours to track: Stop
     // and the running state work exactly as they do for a LAN launch.
     m_runningPid = result.pid;
@@ -724,6 +751,9 @@ void MainWindow::onStopGame(const QString &)
     m_runningGameId.clear();
     m_playPage->setRunning(false);
     m_processPollTimer.stop();
+    // The watchdog exists to serve a running game. Stopping the game closes
+    // its window too - nobody has to go and find it afterwards.
+    GameLauncher::stopReShadeWatchdog();
 }
 
 void MainWindow::onPollRunningProcess()
@@ -736,11 +766,14 @@ void MainWindow::onPollRunningProcess()
             m_runningPid = 0;
             m_runningGameId.clear();
             m_playPage->setRunning(false);
+            GameLauncher::stopReShadeWatchdog();
         }
     } else if (m_runningPid > 0 && !GameLauncher::isPidRunning(m_runningPid)) {
         m_runningPid = 0;
         m_runningGameId.clear();
         m_playPage->setRunning(false);
+        // The game closed on its own: close the watchdog window with it.
+        GameLauncher::stopReShadeWatchdog();
     }
     if (m_serverPid > 0 && !GameLauncher::isPidRunning(m_serverPid)) {
         m_serverPid = 0;

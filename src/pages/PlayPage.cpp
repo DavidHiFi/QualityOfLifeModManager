@@ -7,6 +7,7 @@
 #include "UpdateService.h"
 #include "../Checkables.h"
 #include "GameLauncher.h"
+#include "QolService.h"
 #include "Version.h"
 #include <QCheckBox>
 
@@ -97,7 +98,11 @@ PlayPage::PlayPage(AppSettings &settings, QWidget *parent)
     m_reshade = new Ui::CheckBox(tr("ReShade"), this);
     m_reshade->setProperty("onArt", true);
     m_reshade->setChecked(m_settings.launchReShade);
-    m_reshade->setToolTip(tr("Start the ReShade watchdog beside the game. Plutonium clears ReShade out of its bin folder on every start; the watchdog puts it back."));
+    m_reshade->setToolTip(tr("Ticked, ReShade is in place before the game starts and its watchdog window opens "
+                             "beside it, closing again when the game does - Plutonium clears ReShade out of its "
+                             "bin folder on every start and the watchdog puts it back. LAN gets the build with "
+                             "full add-on support, and DLSS 5 with it on Black Ops II; online gets the stock "
+                             "build, whose add-on support is limited. Unticked, ReShade is taken out of bin."));
     opts->addWidget(m_reshade);
     opts->addSpacing(12);
     m_modeHint = new QLabel(this);
@@ -289,6 +294,11 @@ void PlayPage::updateLaunchOptions()
         hint = tr("No login needed. No mod selected; pick one on the Mods page to load it automatically.");
     if (m_settings.launchReShade && !reshadeReady)
         hint += QStringLiteral("  ") + tr("ReShade is not installed yet: see the Quality of Life page.");
+    else if (m_settings.launchReShade && !online && code == QLatin1String("t6")
+             && QolService::dlssPayloadReady(m_settings))
+        hint += QStringLiteral("  ") + tr("ReShade runs with full add-on support and DLSS 5.");
+    else if (m_settings.launchReShade && online)
+        hint += QStringLiteral("  ") + tr("ReShade runs in its stock build online; add-ons are LAN only.");
     m_modeHint->setText(hint);
     m_play->setText(m_running ? tr("Encerrar") : (online ? tr("Play online") : tr("Iniciar")));
 }

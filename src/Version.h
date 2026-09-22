@@ -1,7 +1,7 @@
 #pragma once
 
 // Single source for the app version and brand. Bump the version before a release.
-#define CLL_VERSION "2.2.0"
+#define CLL_VERSION "2.2.1"
 #define CLL_USER_AGENT "QualityOfLifeModManager/" CLL_VERSION
 
 // Brand strings. CLL_* macro names are kept so the Cod LAN Launcher upstream
@@ -17,7 +17,7 @@
 #define QOL_RAW_BASE        "https://raw.githubusercontent.com/DavidHiFi/QualityOfLifeModManager/main/"
 #define QOL_HOME_FEED_URL   QOL_RAW_BASE "qol_home.json"
 #define QOL_UPDATE_FEED_URL QOL_RAW_BASE "qol_update.json"
-#define QOL_LAUNCHER_ASSET  "QualityOfLifeModManager.exe"
+#define QOL_LAUNCHER_ASSET  "QualityOfLifeModManager.update.bin"
 // Cod LAN Launcher, the upstream this app is forked from (LGPL-3.0).
 #define CLL_UPSTREAM_URL    "https://github.com/MestreTM/CLL-Cod-Lan-Launcher"
 #define CLL_PU_DAT_URL      "https://github.com/MestreTM/CLL-CodLanLauncher/releases/download/v0.1/pu.dat"

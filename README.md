@@ -46,17 +46,17 @@ The Quality of Life series covers T6 (released), T4, T5 and T7 (planned).
 
 ## Install
 
-1. Download **`QualityOfLifeModManagerSetup.exe`** from [Releases](https://github.com/DavidHiFi/QualityOfLifeModManager/releases/latest) and run it. It installs to `%LOCALAPPDATA%\Programs\Quality of Life Mod Manager` for the current user (no admin needed), adds Start menu and desktop shortcuts, and registers in Apps & features. Everything the app needs (Qt 6, MinGW runtime) is inside the Setup: no .NET, no VC++ redistributable, no separate Qt download.
+1. Download **`QualityOfLifeModManagerSetup.exe`** from [Releases](https://github.com/DavidHiFi/QualityOfLifeModManager/releases/latest) and run it. It installs to `%LOCALAPPDATA%\Programs\Quality of Life Mod Manager` for the current user, adds Start menu and desktop shortcuts, and registers in Apps & features. Everything the app needs is inside Setup. It needs no .NET, VC++ redistributable, or separate Qt download. Before Setup finishes, it starts a hidden check that loads Qt, MinGW, the Windows platform plugin, Schannel TLS, and the Windows graphics libraries. A damaged install stops with one diagnostic instead of opening a chain of missing-DLL dialogs.
 
    > Prefer no installer? Take `QualityOfLifeModManager-portable.zip` and unzip it anywhere writable.
    >
-   > Either way, do **not** download the bare `QualityOfLifeModManager.exe` for a fresh install. It is the in-app updater's file only - the exe without its DLLs - and running it alone fails with `Qt6Gui.dll was not found`. No redistributable fixes that; Windows reports the missing DLL before the app's own code runs, so it cannot warn you itself.
+   > The release has no bare app `.exe`. Its in-app updater payload is named `QualityOfLifeModManager.update.bin`, so it cannot be mistaken for Setup.
 
 2. Run the app. The first-run wizard asks for your name, theme, Plutonium folder and game folders.
 3. Open **Quality of Life** in the sidebar and press **Install** on Black Ops II.
 4. Open **Black Ops II**, pick LAN or Online, and press Start.
 
-Prefer a zip? `QualityOfLifeModManager-portable.zip` is the same app: unzip anywhere writable and run the exe. The bare `QualityOfLifeModManager.exe` asset is the in-app updater's file only - running it alone fails with `Qt6Gui.dll was not found` because its runtime ships beside it, not inside it.
+Prefer a zip? `QualityOfLifeModManager-portable.zip` is the same app. Unzip the whole archive anywhere writable, then run the exe inside it.
 
 Settings live in `QualityOfLife.ini` next to the exe. Point it at a different Plutonium folder from **Settings** if yours is not `%LOCALAPPDATA%\Plutonium`.
 
@@ -72,7 +72,7 @@ Qt 6 (Widgets, Network, Concurrent, Svg), a MinGW kit and CMake.
 powershell -ExecutionPolicy Bypass -File scripts\build.ps1 -Clean
 ```
 
-The script writes `dist\` with the exe and the Qt runtime. Paths at the top of the script point at the Qt kit, MinGW and the Visual Studio folder that carries cmake and ninja. See `scripts\README.txt` for the static single-exe route.
+The script writes `dist\` with the exe and the Qt runtime. Paths at the top of the script point at the Qt kit, MinGW and the Visual Studio folder that carries cmake and ninja. `scripts\build-setup.ps1` checks every imported DLL, runs `-installcheck`, builds Setup, extracts the finished Setup into a throwaway directory, and runs the installed check again. See `scripts\README.txt` for the static single-exe route.
 
 Version lives in `src/Version.h`.
 

@@ -30,7 +30,10 @@ CATALOG = [
     {
         "id": "launcher",
         "repo": "DavidHiFi/QualityOfLifeModManager",
-        "asset": "QualityOfLifeModManager.exe",
+        # Keep the updater payload off the public release's list of runnable
+        # .exe files. People repeatedly downloaded the old bare exe as though
+        # it were Setup, then Windows showed one missing-Qt dialog per DLL.
+        "asset": "QualityOfLifeModManager.update.bin",
         "kind": "file",
     },
     {

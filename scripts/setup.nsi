@@ -26,6 +26,9 @@
 !include "x64.nsh"
 !include "LogicLib.nsh"
 
+Var PackageTest
+Var PackageTestDir
+
 Name "Quality of Life Mod Manager"
 OutFile "${OUTFILE}"
 InstallDir "$LOCALAPPDATA\Programs\Quality of Life Mod Manager"
@@ -59,6 +62,16 @@ VIAddVersionKey "FileDescription" "Quality of Life Mod Manager Setup"
 !insertmacro MUI_LANGUAGE "English"
 
 Function .onInit
+  ReadEnvStr $PackageTest "QOL_PACKAGE_TEST"
+  ReadEnvStr $PackageTestDir "QOL_PACKAGE_TEST_DIR"
+  ${If} $PackageTest == "1"
+    ${If} $PackageTestDir == ""
+      SetErrorLevel 2
+      Abort "QOL_PACKAGE_TEST_DIR is required in package-test mode."
+    ${EndIf}
+    StrCpy $INSTDIR $PackageTestDir
+  ${EndIf}
+
   ${IfNot} ${RunningX64}
     MessageBox MB_ICONSTOP "Quality of Life Mod Manager needs 64-bit Windows.$\nThis machine is 32-bit, so the app cannot run here."
     Abort
@@ -117,6 +130,31 @@ Section "Install"
   !insertmacro CheckFile "imageformats\qjpeg.dll"
   !insertmacro CheckFile "install.ps1"
 
+  ; Starting this hidden probe proves more than file existence. Windows must
+  ; load the exe, every directly imported Qt/MinGW DLL, the qwindows platform
+  ; plugin, Schannel TLS, and the Direct3D system libraries. Suppress Windows'
+  ; own loader popups and replace a possible cascade with one installer error.
+  System::Call 'kernel32::SetErrorMode(i 0x8003)i .r2'
+  nsExec::ExecToStack /TIMEOUT=30000 '"$INSTDIR\QualityOfLifeModManager.exe" -installcheck'
+  Pop $0
+  Pop $1
+  System::Call 'kernel32::SetErrorMode(i r2)i .r3'
+  ${If} $0 != "0"
+    MessageBox MB_ICONSTOP "Windows could not start the installed app.$\n$\nRuntime check exit code: $0$\n$1$\n$\nSetup copied all bundled runtimes, so re-download Setup if this file may be damaged. Otherwise run Windows Update and restart before trying again."
+    SetErrorLevel 2
+    Abort "Installed runtime verification failed."
+  ${EndIf}
+
+  ; The build script uses this mode to extract the finished Setup and run the
+  ; installed probe without touching shortcuts, Apps & features, or a real
+  ; installation. Normal users never have these environment variables.
+  ${If} $PackageTest == "1"
+    SetOutPath "$TEMP"
+    RMDir /r "$INSTDIR"
+    SetErrorLevel 0
+    Goto install_done
+  ${EndIf}
+
   WriteUninstaller "$INSTDIR\Uninstall.exe"
 
   WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\QualityOfLifeModManager" "DisplayName" "Quality of Life Mod Manager"
@@ -133,6 +171,7 @@ Section "Install"
   CreateShortCut "$SMPROGRAMS\Quality of Life Mod Manager\Quality of Life Mod Manager.lnk" "$INSTDIR\QualityOfLifeModManager.exe" "" "$INSTDIR\QualityOfLifeModManager.exe" 0
   CreateShortCut "$SMPROGRAMS\Quality of Life Mod Manager\Uninstall.lnk" "$INSTDIR\Uninstall.exe"
   CreateShortCut "$DESKTOP\Quality of Life Mod Manager.lnk" "$INSTDIR\QualityOfLifeModManager.exe" "" "$INSTDIR\QualityOfLifeModManager.exe" 0
+  install_done:
 SectionEnd
 
 Section "Uninstall"

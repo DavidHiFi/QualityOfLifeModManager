@@ -30,6 +30,7 @@ resources/tools/     reshade-watchdog.ps1, embedded, unpacked to <exe>\tools\
 qol_home.json        Home catalog (embedded fallback + fetched from raw GitHub)
 qol_update.json      update feed; only the "launcher" item is ours
 scripts/build.ps1    the release build (dynamic Qt + windeployqt into dist\)
+scripts/verify-runtime.ps1 checks PE imports and runs the installed runtime probe
 ```
 
 ## Things that are easy to break
@@ -124,6 +125,7 @@ throwaway folder that has an empty `bin\plutonium-bootstrapper-win32.exe`.
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts\build.ps1 -Clean
+dist\QualityOfLifeModManager.exe -installcheck
 dist\QualityOfLifeModManager.exe -selftest -plutoniumdir <throwaway root>
 ```
 
@@ -162,24 +164,22 @@ redirect stdout to a file rather than reading it off the pipe.
 2. `powershell -ExecutionPolicy Bypass -File scriptsuild.ps1 -Clean`, then
    `powershell -ExecutionPolicy Bypass -File scriptsuild-setup.ps1 -NsisDir H:\Plutonium	ools\w64devkit\share
 sis`,
-   which writes `release\QualityOfLifeModManagerSetup.exe` and
-   `release\QualityOfLifeModManager-portable.zip` from the same staged tree. Attach
-   the Setup, the zip and the bare `QualityOfLifeModManager.exe` to a GitHub release
-   tagged `vX.Y.Z`.
+   which verifies every imported DLL, checks a contained extraction of the finished
+   installer, and writes `release\QualityOfLifeModManagerSetup.exe`,
+   `release\QualityOfLifeModManager-portable.zip`, and
+   `release\QualityOfLifeModManager.update.bin`. Attach those three files to a
+   GitHub release tagged `vX.Y.Z`. Never attach a bare
+   `QualityOfLifeModManager.exe`: users downloaded it as though it were Setup, and
+   Windows then opened one missing-Qt dialog after another.
 
-   The release notes lead with the Setup, and **every release body must label the
-   bare exe**, because it is the in-app updater's file only: run standalone it dies
-   in the Windows loader with `Qt6Gui.dll was not found` before `main` is reached,
-   so the app cannot detect the case or prompt for anything. Paste this at the top:
+   The release notes lead with the Setup. Paste this at the top:
 
    ```markdown
    Download **QualityOfLifeModManagerSetup.exe** and run it - that is the app.
-   Do NOT download the bare `QualityOfLifeModManager.exe` for a fresh install: it is
-   the in-app updater's file only, and running it alone fails with
-   `Qt6Gui.dll was not found`.
+   The `.update.bin` asset is consumed by the app and is not an installer.
    ```
 3. `python scripts\gen_update.py -o qol_update.json`, commit, push. The app compares
-   its version to the `launcher` item and offers the exe.
+   its version to the `launcher` item and offers the `.update.bin` payload.
 
 ### Publishing when api.github.com will not resolve
 

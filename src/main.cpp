@@ -14,11 +14,80 @@
 #include <QCommandLineOption>
 #include <QCommandLineParser>
 #include <QDir>
+#include <QFileInfo>
+#include <QLibrary>
+#include <QOperatingSystemVersion>
+#include <QSslSocket>
+#include <QSysInfo>
 #include <QTextStream>
 #include <QTimer>
 #include <cstdio>
 
 namespace {
+
+int runInstallCheck()
+{
+    QTextStream out(stdout);
+    const QString root = QCoreApplication::applicationDirPath();
+    const QStringList requiredFiles = {
+        QStringLiteral("QualityOfLifeModManager.exe"),
+        QStringLiteral("Qt6Core.dll"),
+        QStringLiteral("Qt6Gui.dll"),
+        QStringLiteral("Qt6Widgets.dll"),
+        QStringLiteral("Qt6Network.dll"),
+        QStringLiteral("Qt6Svg.dll"),
+        QStringLiteral("libgcc_s_seh-1.dll"),
+        QStringLiteral("libstdc++-6.dll"),
+        QStringLiteral("libwinpthread-1.dll"),
+        QStringLiteral("D3Dcompiler_47.dll"),
+        QStringLiteral("platforms/qwindows.dll"),
+        QStringLiteral("styles/qmodernwindowsstyle.dll"),
+        QStringLiteral("tls/qschannelbackend.dll"),
+        QStringLiteral("imageformats/qjpeg.dll")
+    };
+
+    QStringList failures;
+    for (const QString &relative : requiredFiles) {
+        if (!QFileInfo::exists(QDir(root).filePath(relative)))
+            failures << QStringLiteral("missing %1").arg(QDir::toNativeSeparators(relative));
+    }
+
+#ifdef Q_OS_WIN
+    if (QOperatingSystemVersion::current() < QOperatingSystemVersion::Windows10)
+        failures << QStringLiteral("Windows 10 or later is required");
+
+    // These are the Windows components imported by Qt 6 on this build. Load
+    // them now so Setup reports one useful failure instead of letting the user
+    // discover a chain of Windows loader dialogs after installation.
+    const QStringList systemLibraries = {
+        QStringLiteral("d3d11"), QStringLiteral("dxgi"), QStringLiteral("dwrite"),
+        QStringLiteral("dwmapi"), QStringLiteral("bcrypt"), QStringLiteral("ncrypt"),
+        QStringLiteral("secur32")
+    };
+    for (const QString &name : systemLibraries) {
+        QLibrary library(name);
+        if (!library.load())
+            failures << QStringLiteral("Windows component %1.dll: %2").arg(name, library.errorString());
+    }
+#endif
+
+    if (QGuiApplication::platformName().isEmpty())
+        failures << QStringLiteral("Qt could not load a Windows platform plugin");
+    if (!QSslSocket::supportsSsl())
+        failures << QStringLiteral("Qt could not load its Windows TLS backend");
+
+    if (!failures.isEmpty()) {
+        for (const QString &failure : failures)
+            out << "FAIL " << failure << Qt::endl;
+        return 2;
+    }
+
+    out << "PASS Windows " << QSysInfo::currentCpuArchitecture()
+        << ", Qt " << QT_VERSION_STR
+        << ", platform " << QGuiApplication::platformName()
+        << ", TLS " << QSslSocket::sslLibraryVersionString() << Qt::endl;
+    return 0;
+}
 
 // Headless mode: build the launch from CLI args and start the bootstrapper.
 int runNoGui(AppSettings &settings, const QCommandLineParser &parser)
@@ -105,9 +174,13 @@ int main(int argc, char *argv[])
                                 "account) instead of LAN."});
     parser.addOption({"selftest", "Offline checks against -plutoniumdir (ReShade install/remove, watchdog unpack, "
                                   "online handler probe); prints one line per check and exits non-zero on failure."});
+    parser.addOption({"installcheck", "Check the installed Qt, MinGW, TLS and Windows graphics runtimes, then exit."});
     parser.addOption({"checkupdates", "Print what each component resolves to and what is pending, then exit. "
                                       "Shows whether a version came from the feed or from the component's own repo."});
     parser.process(app);
+
+    if (parser.isSet("installcheck"))
+        return runInstallCheck();
 
     if (parser.isSet("checkupdates")) {
         AppSettings settings = AppSettings::loadForStartup();

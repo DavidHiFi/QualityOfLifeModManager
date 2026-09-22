@@ -1,7 +1,7 @@
 #pragma once
 
 // Single source for the app version and brand. Bump the version before a release.
-#define CLL_VERSION "2.1.6"
+#define CLL_VERSION "2.2.0"
 #define CLL_USER_AGENT "QualityOfLifeModManager/" CLL_VERSION
 
 // Brand strings. CLL_* macro names are kept so the Cod LAN Launcher upstream

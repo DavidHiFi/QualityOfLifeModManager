@@ -46,7 +46,12 @@ The Quality of Life series covers T6 (released), T4, T5 and T7 (planned).
 
 ## Install
 
-1. Download `QualityOfLifeModManagerSetup.exe` from [Releases](https://github.com/DavidHiFi/QualityOfLifeModManager/releases/latest) and run it. It installs to `%LOCALAPPDATA%\Programs\Quality of Life Mod Manager` for the current user (no admin needed), adds Start menu and desktop shortcuts, and registers in Apps & features. Everything the app needs (Qt 6, MinGW runtime) is inside the Setup: no .NET, no VC++ redistributable, no separate Qt download.
+1. Download **`QualityOfLifeModManagerSetup.exe`** from [Releases](https://github.com/DavidHiFi/QualityOfLifeModManager/releases/latest) and run it. It installs to `%LOCALAPPDATA%\Programs\Quality of Life Mod Manager` for the current user (no admin needed), adds Start menu and desktop shortcuts, and registers in Apps & features. Everything the app needs (Qt 6, MinGW runtime) is inside the Setup: no .NET, no VC++ redistributable, no separate Qt download.
+
+   > Prefer no installer? Take `QualityOfLifeModManager-portable.zip` and unzip it anywhere writable.
+   >
+   > Either way, do **not** download the bare `QualityOfLifeModManager.exe` for a fresh install. It is the in-app updater's file only - the exe without its DLLs - and running it alone fails with `Qt6Gui.dll was not found`. No redistributable fixes that; Windows reports the missing DLL before the app's own code runs, so it cannot warn you itself.
+
 2. Run the app. The first-run wizard asks for your name, theme, Plutonium folder and game folders.
 3. Open **Quality of Life** in the sidebar and press **Install** on Black Ops II.
 4. Open **Black Ops II**, pick LAN or Online, and press Start.

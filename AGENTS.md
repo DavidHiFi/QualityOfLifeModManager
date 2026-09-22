@@ -159,12 +159,25 @@ redirect stdout to a file rather than reading it off the pipe.
 ## Releasing
 
 1. Bump `CLL_VERSION` in `src/Version.h`.
-2. `powershell -ExecutionPolicy Bypass -File scripts\build.ps1 -Clean`, then
-   `powershell -ExecutionPolicy Bypass -File scripts\build-setup.ps1`, which writes
-   `release\QualityOfLifeModManagerSetup.exe` and `release\QualityOfLifeModManager-portable.zip`
-   from the same staged tree. Attach the Setup, the zip and the bare
-   `QualityOfLifeModManager.exe` (the in-app updater's file - it cannot run on its
-   own) to a GitHub release tagged `vX.Y.Z`. The release notes lead with the Setup.
+2. `powershell -ExecutionPolicy Bypass -File scriptsuild.ps1 -Clean`, then
+   `powershell -ExecutionPolicy Bypass -File scriptsuild-setup.ps1 -NsisDir H:\Plutonium	ools\w64devkit\share
+sis`,
+   which writes `release\QualityOfLifeModManagerSetup.exe` and
+   `release\QualityOfLifeModManager-portable.zip` from the same staged tree. Attach
+   the Setup, the zip and the bare `QualityOfLifeModManager.exe` to a GitHub release
+   tagged `vX.Y.Z`.
+
+   The release notes lead with the Setup, and **every release body must label the
+   bare exe**, because it is the in-app updater's file only: run standalone it dies
+   in the Windows loader with `Qt6Gui.dll was not found` before `main` is reached,
+   so the app cannot detect the case or prompt for anything. Paste this at the top:
+
+   ```markdown
+   Download **QualityOfLifeModManagerSetup.exe** and run it - that is the app.
+   Do NOT download the bare `QualityOfLifeModManager.exe` for a fresh install: it is
+   the in-app updater's file only, and running it alone fails with
+   `Qt6Gui.dll was not found`.
+   ```
 3. `python scripts\gen_update.py -o qol_update.json`, commit, push. The app compares
    its version to the `launcher` item and offers the exe.
 

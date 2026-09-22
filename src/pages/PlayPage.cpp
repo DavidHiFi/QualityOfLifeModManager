@@ -105,6 +105,16 @@ PlayPage::PlayPage(AppSettings &settings, QWidget *parent)
                              "build, whose add-on support is limited. Unticked, ReShade is taken out of bin."));
     opts->addWidget(m_reshade);
     opts->addSpacing(12);
+    m_dlss5 = new Ui::CheckBox(tr("DLSS 5"), this);
+    m_dlss5->setProperty("onArt", true);
+    m_dlss5->setChecked(m_settings.launchDlss5);
+    m_dlss5->setToolTip(tr("NVIDIA DLSS 5 neural rendering, LAN only, through the DLSS5-Feeder add-on. It is a "
+                           "separate choice from ReShade because it is not free: the neural pass runs in a "
+                           "64-bit helper process and this 32-bit engine waits on the round trip, which measured "
+                           "120 fps down to 30 on an RTX 4070 at 1440p. Leave it off to play, turn it on for the "
+                           "look. Press F10 in game for its panel."));
+    opts->addWidget(m_dlss5);
+    opts->addSpacing(12);
     m_modeHint = new QLabel(this);
     m_modeHint->setObjectName("HeroPath");
     m_modeHint->setWordWrap(true);
@@ -125,6 +135,11 @@ PlayPage::PlayPage(AppSettings &settings, QWidget *parent)
     });
     connect(m_reshade, &QCheckBox::toggled, this, [this](bool on) {
         m_settings.launchReShade = on;
+        m_settings.saveToIni();
+        updateLaunchOptions();
+    });
+    connect(m_dlss5, &QCheckBox::toggled, this, [this](bool on) {
+        m_settings.launchDlss5 = on;
         m_settings.saveToIni();
         updateLaunchOptions();
     });
@@ -279,6 +294,11 @@ void PlayPage::updateLaunchOptions()
     m_lanBtn->setVisible(plutoGame);
     m_onlineBtn->setVisible(plutoGame);
     m_reshade->setVisible(plutoGame);
+    // DLSS 5 is Black Ops II only, LAN only, and only once its payload is on
+    // the PC. Online never gets it: add-ons need the build of ReShade this
+    // app keeps for LAN.
+    m_dlss5->setVisible(plutoGame && code == QLatin1String("t6") && !m_settings.launchOnline
+                        && m_settings.launchReShade && QolService::dlssPayloadReady(m_settings));
     if (!plutoGame) {
         m_modeHint->clear();
         return;
@@ -295,8 +315,10 @@ void PlayPage::updateLaunchOptions()
     if (m_settings.launchReShade && !reshadeReady)
         hint += QStringLiteral("  ") + tr("ReShade is not installed yet: see the Quality of Life page.");
     else if (m_settings.launchReShade && !online && code == QLatin1String("t6")
-             && QolService::dlssPayloadReady(m_settings))
-        hint += QStringLiteral("  ") + tr("ReShade runs with full add-on support and DLSS 5.");
+             && m_settings.launchDlss5 && QolService::dlssPayloadReady(m_settings))
+        hint += QStringLiteral("  ") + tr("ReShade runs with full add-on support and DLSS 5 (F10 for its panel).");
+    else if (m_settings.launchReShade && !online)
+        hint += QStringLiteral("  ") + tr("ReShade runs with full add-on support.");
     else if (m_settings.launchReShade && online)
         hint += QStringLiteral("  ") + tr("ReShade runs in its stock build online; add-ons are LAN only.");
     m_modeHint->setText(hint);
@@ -721,6 +743,7 @@ void PlayPage::retranslate()
     if (m_lanBtn) m_lanBtn->setText(tr("LAN"));
     if (m_onlineBtn) m_onlineBtn->setText(tr("Online"));
     if (m_reshade) m_reshade->setText(tr("ReShade"));
+    if (m_dlss5) m_dlss5->setText(tr("DLSS 5"));
     if (m_mp)
         m_mp->setText(tr("Multiplayer"));
     if (m_sp)

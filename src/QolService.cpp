@@ -661,16 +661,29 @@ const QStringList kLanOnlyFiles = {
 };
 // The 64-bit helper and its NVIDIA runtimes. A whole folder, removed as one.
 const QString kHostDir = QStringLiteral("host64");
-// The derived LAN preset, named after whichever preset it was derived from.
-const QString kLanPresetTag = QStringLiteral(" DLSS.ini");
+// The DLSS preset. One fixed name, so ReShade's own preset switcher has an
+// obvious pair to flip between: DLSS5 for playing with the neural pass, and
+// whichever grading preset the user keeps for looks.
+const QString kLanPresetName = QStringLiteral("DLSS5.ini");
+// v1 named it "<their preset> DLSS.ini". Swept out of bin on sight.
+const QString kOldLanPresetTag = QStringLiteral(" DLSS.ini");
 
-// Takes the derived LAN presets out of bin, keeping the latest copy of each in
-// the LAN vault first. They are generated files, but they are also where any
-// tuning done during a LAN session lives, and an unticked box must not cost
-// the user that.
+// Takes the DLSS preset out of bin, keeping the latest copy in the LAN vault
+// first. It is a generated file, but it is also where any tuning done during a
+// LAN session lives, and an unticked box must not cost the user that.
 void parkLanPresets(const QString &bin, const QString &lanVault)
 {
-    for (const QString &name : QDir(bin).entryList({QLatin1Char('*') + kLanPresetTag}, QDir::Files)) {
+    // v1's derived presets are not kept. They were a copy of the user's
+    // grading with the DLSS techniques bolted on, which is the arrangement
+    // this route exists to stop making.
+    for (const QString &old : QDir(bin).entryList({QLatin1Char('*') + kOldLanPresetTag}, QDir::Files)) {
+        QFile::remove(QDir(bin).filePath(old));
+        QFile::remove(QDir(lanVault).filePath(old));
+    }
+    QStringList names;
+    if (QFileInfo::exists(QDir(bin).filePath(kLanPresetName)))
+        names << kLanPresetName;
+    for (const QString &name : names) {
         QDir().mkpath(lanVault);
         const QString kept = QDir(lanVault).filePath(name);
         QFile::remove(kept);
@@ -691,6 +704,36 @@ const QStringList kDlssTechniques = {
 QString activeMarkerPath(const AppSettings &s)
 {
     return QDir(QolService::stateDir(s)).filePath(QStringLiteral("reshade-active.txt"));
+}
+
+// dlss5-feed.cfg is plain key=value, one per line, and the feeder re-reads it
+// every 60 delivered frames. Only the named keys are touched; every other
+// value, including anything set from the in-game panel, is left as it is.
+void setFeederKeys(const QString &bin, const QList<QPair<QString, QString>> &keys)
+{
+    const QString path = QDir(bin).filePath(QStringLiteral("dlss5-feed.cfg"));
+    QFile in(path);
+    if (!in.open(QIODevice::ReadOnly))
+        return;
+    QList<QByteArray> lines = in.readAll().split('\n');
+    in.close();
+    for (const auto &kv : keys) {
+        const QByteArray prefix = kv.first.toUtf8() + "=";
+        bool found = false;
+        for (QByteArray &line : lines) {
+            const bool cr = line.endsWith('\r');
+            if (!line.trimmed().startsWith(prefix))
+                continue;
+            line = prefix + kv.second.toUtf8() + (cr ? "\r" : "");
+            found = true;
+            break;
+        }
+        if (!found)
+            lines << prefix + kv.second.toUtf8() + "\r";
+    }
+    QFile out(path);
+    if (out.open(QIODevice::WriteOnly | QIODevice::Truncate))
+        out.write(lines.join('\n'));
 }
 
 // The payload holds 237 MB of NVIDIA runtimes. Re-copying those on every
@@ -869,21 +912,12 @@ QString mergeTokens(const QString &csv, const QStringList &add, const QStringLis
 //  The user's four techniques and every slider under them were gone from both
 //  bin and the vault by the time the menu appeared.
 //
-//  So LAN gets a derived preset of its own - "<their preset> DLSS.ini" - and
-//  PresetPath points at it for the session. Their file is not opened. If
-//  ReShade truncates anything now it is the derived copy, which is rebuilt
-//  from theirs whenever it goes missing.
+//  So LAN runs DLSS5.ini, which holds the two techniques DLSS needs and
+//  nothing else: the kernel that produces motion vectors and the feed itself.
+//  Every other effect is a pass at 1440p that DLSS then has to pay for, so a
+//  colour grade on top of the neural pass costs frames twice. Switch to the
+//  grading preset from ReShade's own Home tab when you want the look instead.
 // ---------------------------------------------------------------------------
-QString presetFile(const QString &bin, QString rel)
-{
-    if (rel.isEmpty())
-        rel = QStringLiteral("Cinematic Colour Grading.ini");
-    if (rel.startsWith(QStringLiteral(".\\")) || rel.startsWith(QStringLiteral("./")))
-        rel = rel.mid(2);
-    const QFileInfo fi(rel);
-    return fi.isAbsolute() ? rel : QDir(bin).filePath(rel);
-}
-
 QString currentPresetPath(const QString &bin)
 {
     QFile f(QDir(bin).filePath(QStringLiteral("ReShade.ini")));
@@ -894,37 +928,26 @@ QString currentPresetPath(const QString &bin)
 
 bool isLanPreset(const QString &presetPath)
 {
-    return presetPath.contains(QStringLiteral(" DLSS.ini"), Qt::CaseInsensitive);
+    return presetPath.endsWith(kLanPresetName, Qt::CaseInsensitive);
 }
 
-QString lanPresetPathFor(const QString &basePath)
+// Written once, then left alone: whatever is tuned in it in game is the
+// user's. Only the two techniques, in the order the feeder wants them.
+bool ensureLanPreset(const QString &bin, const QString &lanVault, QString &error)
 {
-    QString rel = basePath.isEmpty() ? QStringLiteral(".\\Cinematic Colour Grading.ini") : basePath;
-    if (rel.endsWith(QStringLiteral(".ini"), Qt::CaseInsensitive))
-        rel.chop(4);
-    return rel + QStringLiteral(" DLSS.ini");
-}
-
-// Builds the derived preset once: the user's own, plus the two techniques the
-// feeder needs. Not rewritten afterwards - whatever is tuned in it in game is
-// theirs to keep.
-bool ensureLanPreset(const QString &bin, const QString &basePath, const QString &lanPath,
-                     const QString &lanVault, QString &error)
-{
-    const QString lanFile = presetFile(bin, lanPath);
+    const QString lanFile = QDir(bin).filePath(kLanPresetName);
     if (QFileInfo::exists(lanFile))
         return true;
-    // An earlier LAN session's copy, parked when ReShade was switched off,
-    // carries whatever was tuned in it. It beats deriving a fresh one.
-    const QString parked = QDir(lanVault).filePath(QFileInfo(lanFile).fileName());
+    const QString parked = QDir(lanVault).filePath(kLanPresetName);
     if (QFileInfo::exists(parked) && QFile::copy(parked, lanFile))
         return true;
-    QByteArray body;
-    QFile base(presetFile(bin, basePath));
-    if (base.open(QIODevice::ReadOnly))
-        body = base.readAll();
-    for (const QString &key : {QStringLiteral("Techniques"), QStringLiteral("TechniqueSorting")})
-        body = iniSet(body, QString(), key, mergeTokens(iniGet(body, QString(), key), kDlssTechniques, {}));
+    const QByteArray body =
+        "Techniques=" + kDlssTechniques.join(QLatin1Char(',')).toUtf8() + "\r\n"
+        "TechniqueSorting=" + kDlssTechniques.join(QLatin1Char(',')).toUtf8() + "\r\n"
+        "PreprocessorDefinitions=DLSS5_MV_PROVIDER=3\r\n"
+        "\r\n"
+        "[DLSS5_Feed.fx]\r\n"
+        "PreprocessorDefinitions=DLSS5_MV_PROVIDER=3\r\n";
     QDir().mkpath(QFileInfo(lanFile).absolutePath());
     QFile out(lanFile);
     if (!out.open(QIODevice::WriteOnly | QIODevice::Truncate) || out.write(body) != body.size()) {
@@ -940,7 +963,7 @@ QolService::ReShadeMode activeReShadeMode(const AppSettings &s)
 {
     QFile f(activeMarkerPath(s));
     if (f.open(QIODevice::ReadOnly)
-        && QString::fromUtf8(f.readAll()).trimmed().compare(QLatin1String("lan"), Qt::CaseInsensitive) == 0)
+        && QString::fromUtf8(f.readAll()).trimmed().startsWith(QLatin1String("lan"), Qt::CaseInsensitive))
         return ReShadeMode::Lan;
     return ReShadeMode::Online;
 }
@@ -1119,34 +1142,30 @@ bool applyReShadeMode(const AppSettings &s, ReShadeMode mode, bool dlss, QString
             disabledBefore = iniGet(f.readAll(), QStringLiteral("ADDON"), QStringLiteral("DisabledAddons"));
             f.close();
         }
-        // Which preset the session plays on. LAN runs a derived copy so the
-        // tuned one is never opened by ReShade while the effect list is in
-        // flux; online goes back to whatever it was before.
+        // Which preset the session plays on. LAN runs DLSS5.ini, which holds
+        // the neural pass and nothing else; online goes back to whatever was
+        // loaded before. The user's own preset is never opened either way.
         const QString presetNow = currentPresetPath(bin);
         const QString presetMemo = QDir(stateDir(s)).filePath(QStringLiteral("reshade-preset-before-lan.txt"));
         QString presetTarget = presetNow;
         if (withDlss) {
-            const QString base = isLanPreset(presetNow) ? QString() : presetNow;
-            if (!base.isEmpty()) {
+            if (!isLanPreset(presetNow) && !presetNow.isEmpty()) {
                 QFile m(presetMemo);
                 if (m.open(QIODevice::WriteOnly | QIODevice::Truncate))
-                    m.write(base.toUtf8());
+                    m.write(presetNow.toUtf8());
             }
-            QString remembered = base;
-            if (remembered.isEmpty()) {
-                QFile m(presetMemo);
-                if (m.open(QIODevice::ReadOnly))
-                    remembered = QString::fromUtf8(m.readAll()).trimmed();
+            presetTarget = QStringLiteral(".\\") + kLanPresetName;
+            for (const QString &old : QDir(bin).entryList({QLatin1Char('*') + kOldLanPresetTag}, QDir::Files)) {
+                QFile::remove(QDir(bin).filePath(old));
+                QFile::remove(QDir(reShadeLanVault(s)).filePath(old));
             }
-            presetTarget = lanPresetPathFor(remembered);
-            if (!ensureLanPreset(bin, remembered, presetTarget, reShadeLanVault(s), error))
+            if (!ensureLanPreset(bin, reShadeLanVault(s), error))
                 return false;
             // Keep a copy where the watchdog restores from, so a Plutonium
             // wipe mid-session cannot leave the session with no preset.
             QString ignored;
-            copyIfDifferent(presetFile(bin, presetTarget),
-                            QDir(reShadeLanVault(s)).filePath(QFileInfo(presetFile(bin, presetTarget)).fileName()),
-                            ignored);
+            copyIfDifferent(QDir(bin).filePath(kLanPresetName),
+                            QDir(reShadeLanVault(s)).filePath(kLanPresetName), ignored);
         } else if (isLanPreset(presetNow)) {
             QFile m(presetMemo);
             QString back;
@@ -1167,12 +1186,13 @@ bool applyReShadeMode(const AppSettings &s, ReShadeMode mode, bool dlss, QString
                 if (m.open(QIODevice::WriteOnly | QIODevice::Truncate))
                     m.write(disabledBefore.toUtf8());
             }
-            // SkipLoadingDisabledEffects is deliberately left alone. The two
-            // techniques the feeder needs are named in the preset, so they
-            // load either way; turning the skip off instead compiles all 473
-            // effects in the pack on every launch - about a minute of black
-            // screen and a page of errors from unrelated third-party shaders.
-            edits << [](const QByteArray &t) { return iniSet(t, QStringLiteral("ADDON"), QStringLiteral("AddonPath"), QStringLiteral(".\\")); }
+            // DLSS5.ini enables two techniques, so two effects are all that
+            // need compiling. ReShade does not keep this setting on its own -
+            // it rewrites its config on exit, and a 0 in there means all 473
+            // effects in the pack compile on every launch: 90 seconds of
+            // black screen and a page of errors from shaders nothing uses.
+            edits << [](const QByteArray &t) { return iniSet(t, QStringLiteral("GENERAL"), QStringLiteral("SkipLoadingDisabledEffects"), QStringLiteral("1")); }
+                  << [](const QByteArray &t) { return iniSet(t, QStringLiteral("ADDON"), QStringLiteral("AddonPath"), QStringLiteral(".\\")); }
                   << [](const QByteArray &t) { return iniSet(t, QStringLiteral("ADDON"), QStringLiteral("DisabledAddons"), QString()); }
                   << [](const QByteArray &t) {
                          return iniSet(t, QStringLiteral("GENERAL"), QStringLiteral("PreprocessorDefinitions"),
@@ -1201,9 +1221,34 @@ bool applyReShadeMode(const AppSettings &s, ReShadeMode mode, bool dlss, QString
             return false;
     }
 
+    // The feeder's own config, and the reason DLSS off is a setting here
+    // rather than a deletion.
+    //
+    // DLSS 5 Swapper can have this same folder registered as one of its
+    // games - on this PC it has bin\host64 - and it puts its payload back
+    // within seconds of anything removing it. Two applications owning one
+    // folder is not a fight worth having, so the switch that decides whether
+    // DLSS runs is the feeder's own `enabled` key. Files may come back; the
+    // pass does not.
+    //
+    // host_window is the expensive one. With the DLSS 5 panel cast into the
+    // game the helper renders its whole ReShade overlay into a 900x1352
+    // texture every frame and the game composites it: measured here that is
+    // about 28 ms of CPU stall per frame on top of the neural pass. The panel
+    // is for changing settings, not for playing behind, so it starts hidden
+    // and F10 brings it up.
+    setFeederKeys(bin, {{QStringLiteral("enabled"), withDlss ? QStringLiteral("1") : QStringLiteral("0")},
+                        {QStringLiteral("host_window"), QStringLiteral("0")},
+                        {QStringLiteral("cast_key"), QStringLiteral("121")}});
+
+    // Three states, not two. The watchdog restores whatever Plutonium clears
+    // out of bin, and the LAN vault holds both the add-on runtime (wanted by
+    // every LAN session) and the DLSS payload (wanted only when DLSS is on).
+    // With a single "lan" marker it put the feeder and the 64-bit helper
+    // straight back into a session that had deliberately left them out.
     QFile marker(activeMarkerPath(s));
     if (marker.open(QIODevice::WriteOnly | QIODevice::Truncate))
-        marker.write(lan ? "lan" : "online");
+        marker.write(withDlss ? "lan-dlss" : (lan ? "lan" : "online"));
 
     if (lan && dlss && !withDlss) {
         error = QObject::tr("The add-on build of ReShade is in place, but the DLSS 5 payload "
@@ -1215,6 +1260,14 @@ bool applyReShadeMode(const AppSettings &s, ReShadeMode mode, bool dlss, QString
 
 bool ensureReShadeAbsent(const AppSettings &s, QString &error)
 {
+    // Refuse before touching anything. This used to sweep the add-ons and the
+    // 64-bit helper out of bin and only then discover it could not delete
+    // dxgi.dll because the game held it open - leaving a session with the
+    // add-on runtime loaded and nothing for it to load.
+    if (const QString g = runningGame(); !g.isEmpty()) {
+        error = QObject::tr("Close Plutonium first (%1 is running).").arg(g);
+        return false;
+    }
     const QString bin = QDir(s.plutoniumInstance).filePath(QStringLiteral("bin"));
     for (const QString &rel : kLanOnlyFiles)
         QFile::remove(QDir(bin).filePath(rel));

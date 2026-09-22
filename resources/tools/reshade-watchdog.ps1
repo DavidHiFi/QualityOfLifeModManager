@@ -69,7 +69,8 @@ $ActiveFile  = Join-Path $StateDir 'reshade-active.txt'
 function Get-ActiveMode {
     try {
         if (Test-Path -LiteralPath $ActiveFile) {
-            if ((Get-Content -LiteralPath $ActiveFile -Raw).Trim() -ieq 'lan') { return 'lan' }
+            $value = (Get-Content -LiteralPath $ActiveFile -Raw).Trim().ToLowerInvariant()
+            if ($value -eq 'lan-dlss' -or $value -eq 'lan') { return $value }
         }
     } catch { }
     return 'online'
@@ -78,11 +79,27 @@ function Get-ActiveMode {
 # The vaults this session restores from, nearest-wins: in LAN the add-on
 # runtime and the feeder payload come first, so the stock dxgi.dll in the base
 # vault can never overwrite it.
+#
+# 🛑 The LAN vault holds two different things. dxgi.dll is the add-on build of
+# ReShade and belongs in every LAN session. Everything else under it -
+# dlss5-feed.addon32, DLSS5_Feed.fx, the whole host64\ helper - belongs only
+# to a session that asked for DLSS. Restoring the lot on a plain LAN launch
+# put the feeder back into a session that had deliberately removed it, and the
+# game went from 120 fps to 30 with nothing in the UI to explain why.
 function Get-ActiveVaults {
-    if ((Get-ActiveMode) -eq 'lan' -and (Test-Path -LiteralPath $LanVaultDir)) {
-        return @($LanVaultDir, $VaultDir)
-    }
+    $mode = Get-ActiveMode
+    if ($mode -eq 'lan-dlss' -and (Test-Path -LiteralPath $LanVaultDir)) { return @($LanVaultDir, $VaultDir) }
     return @($VaultDir)
+}
+
+# The one file from the LAN vault a plain LAN session still needs.
+function Restore-LanRuntime {
+    if ((Get-ActiveMode) -ne 'lan') { return 0 }
+    $from = Join-Path $LanVaultDir 'dxgi.dll'
+    $to   = Join-Path $BinDir 'dxgi.dll'
+    if (-not (Test-Path -LiteralPath $from) -or (Test-Path -LiteralPath $to)) { return 0 }
+    Copy-Item -LiteralPath $from -Destination $to -Force
+    return 1
 }
 
 # Every executable Plutonium can put a game process behind, taken from a
@@ -137,7 +154,7 @@ function Restore-MissingReShade {
     }
     if (-not (Test-Path -LiteralPath $BinDir)) { return 0 }
 
-    $restored = 0
+    $restored = Restore-LanRuntime
     foreach ($vault in Get-ActiveVaults) {
         $restored += Restore-FromVault $vault
     }
@@ -471,13 +488,11 @@ else {
 # session that silently fell back to the stock build is the failure this line
 # exists to make obvious.
 $mode = Get-ActiveMode
-if ($mode -eq 'lan') {
-    $feeder = Join-Path $LanVaultDir 'dlss5-feed.addon32'
-    if (Test-Path -LiteralPath $feeder) {
-        Write-Host "  Mode: LAN - ReShade with full add-on support, DLSS 5 add-on included." -ForegroundColor Green
-    } else {
-        Write-Host "  Mode: LAN - ReShade with full add-on support. No DLSS 5 payload imported." -ForegroundColor Yellow
-    }
+if ($mode -eq 'lan-dlss') {
+    Write-Host "  Mode: LAN - ReShade with full add-on support, DLSS 5 running." -ForegroundColor Green
+    Write-Host "        F10 shows the DLSS 5 panel. It costs frames while it is up." -ForegroundColor DarkGray
+} elseif ($mode -eq 'lan') {
+    Write-Host "  Mode: LAN - ReShade with full add-on support. DLSS 5 off." -ForegroundColor Green
 } else {
     Write-Host "  Mode: online - stock ReShade, add-on support limited by that build." -ForegroundColor DarkGray
 }

@@ -133,6 +133,7 @@ bool AppSettings::loadFromIni()
     checkUpdatesOnStart = ini.value("check updates on start", true).toBool();
     launchOnline      = ini.value("launch online", false).toBool();
     launchReShade     = ini.value("launch reshade", false).toBool();
+    launchDlss5       = ini.value("launch dlss5", false).toBool();
     bo3Client         = ini.value("bo3 client", QStringLiteral("cll")).toString();
     if (bo3Client != QLatin1String("competitive"))
         bo3Client = QStringLiteral("cll");
@@ -172,6 +173,7 @@ void AppSettings::saveToIni() const
     ini.setValue("check updates on start", copy.checkUpdatesOnStart);
     ini.setValue("launch online", copy.launchOnline);
     ini.setValue("launch reshade", copy.launchReShade);
+    ini.setValue("launch dlss5", copy.launchDlss5);
     ini.setValue("bo3 client", copy.bo3Client);
     ini.setValue("bo3 client chosen", copy.bo3ClientChosen);
     ini.setValue("aw client ready", copy.awClientReady);

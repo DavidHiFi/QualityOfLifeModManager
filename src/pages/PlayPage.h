@@ -58,6 +58,7 @@ private:
     QPushButton *m_lanBtn = nullptr;     // segmented LAN | Online
     QPushButton *m_onlineBtn = nullptr;
     QCheckBox *m_reshade = nullptr;
+    QCheckBox *m_dlss5 = nullptr;
     QLabel *m_modeHint = nullptr;
     void updateLaunchOptions();
     QString m_selectedMod;

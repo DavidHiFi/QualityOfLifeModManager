@@ -29,6 +29,11 @@ public:
     // Play page launch options (persisted).
     bool launchOnline = false;   // false = LAN (bootstrapper), true = plutonium://play/<id> through the launcher
     bool launchReShade = false;  // start the ReShade watchdog beside the game
+    // DLSS 5 is its own choice, not part of ReShade. Measured on this engine
+    // it costs 120 fps -> 30: the neural pass runs in a 64-bit helper and the
+    // 32-bit game waits on the round trip, with both CPU and GPU idle. Worth
+    // it for the look, not for playing, so it is off unless asked for.
+    bool launchDlss5 = false;
 
     QString modId;
     QString gameId;

@@ -674,7 +674,8 @@ void MainWindow::onLaunchGame(const QString &gameId, const QString &mode)
     // LAN is not signed in to anything, so it gets the add-on build of ReShade
     // and, on Black Ops II, DLSS 5 with it. This has to happen before the game
     // starts: once the bootstrapper has dxgi.dll open it cannot be replaced.
-    prepareReShade(QolService::ReShadeMode::Lan, gameId == QLatin1String("Black ops II"));
+    prepareReShade(QolService::ReShadeMode::Lan,
+                   m_settings.launchDlss5 && gameId == QLatin1String("Black ops II"));
 
     const GameLauncher::Result result = GameLauncher::launch(m_settings, m_modsPage->selectedMod());
     if (result.hasError) {

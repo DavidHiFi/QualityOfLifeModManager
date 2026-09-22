@@ -110,9 +110,9 @@ PlayPage::PlayPage(AppSettings &settings, QWidget *parent)
     m_dlss5->setChecked(m_settings.launchDlss5);
     m_dlss5->setToolTip(tr("NVIDIA DLSS 5 neural rendering, LAN only, through the DLSS5-Feeder add-on. It is a "
                            "separate choice from ReShade because it is not free: the neural pass runs in a "
-                           "64-bit helper process and this 32-bit engine waits on the round trip, which measured "
-                           "120 fps down to 30 on an RTX 4070 at 1440p. Leave it off to play, turn it on for the "
-                           "look. Press F10 in game for its panel."));
+                           "64-bit helper process and this 32-bit engine waits on the round trip each frame. "
+                           "Press F10 in game for its panel - leave that panel closed while playing, it costs "
+                           "far more than the pass does."));
     opts->addWidget(m_dlss5);
     opts->addSpacing(12);
     m_modeHint = new QLabel(this);
@@ -319,9 +319,8 @@ void PlayPage::updateLaunchOptions()
             m_dlss5->setToolTip(tr("NVIDIA DLSS 5 neural rendering, LAN only, through the DLSS5-Feeder add-on. "
                                    "It is a separate choice from ReShade because it is not free: the neural "
                                    "pass runs in a 64-bit helper process and this 32-bit engine waits on the "
-                                   "round trip, which measured 120 fps down to 30 on an RTX 4070 at 1440p. "
-                                   "Leave it off to play, turn it on for the look. Press F10 in game for its "
-                                   "panel."));
+                                   "round trip each frame. Press F10 in game for its panel - leave that panel "
+                                   "closed while playing, it costs far more than the pass does."));
         }
     }
     if (!plutoGame) {

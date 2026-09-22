@@ -72,6 +72,25 @@ QString sha256Of(const QString &path)
     return QString::fromLatin1(h.result().toHex());
 }
 
+// Without a digest we can still refuse the realistic failures: an HTML error
+// page, a truncated transfer, a 404 body written out as though it were the
+// payload. Anything we are going to run has to be a program first.
+bool looksLikeWindowsBinary(const QString &path)
+{
+    QFile f(path);
+    if (!f.open(QIODevice::ReadOnly))
+        return false;
+    QByteArray head = f.read(0x40);
+    if (head.size() < 0x40 || !head.startsWith("MZ"))
+        return false;
+    const auto byte = [&](int i) { return quint32(quint8(head.at(i))); };
+    const quint32 peOffset =
+        byte(0x3C) | (byte(0x3D) << 8) | (byte(0x3E) << 16) | (byte(0x3F) << 24);
+    if (peOffset == 0 || peOffset > quint32(f.size()) - 4 || !f.seek(peOffset))
+        return false;
+    return f.read(4) == QByteArray("PE\0\0", 4);
+}
+
 QString displayName(const QString &id)
 {
     if (id == QLatin1String("launcher"))
@@ -85,6 +104,64 @@ QString displayName(const QString &id)
     if (id == QLatin1String("boiii-community"))
         return QCoreApplication::translate("UpdateService", "BOIII Community");
     return id;
+}
+
+// Did we get the file the feed was describing? Strongest evidence first: the
+// feed's sha1, then a sha256 if one was published, then the shape of what
+// arrived. Only a digest that survived parsing is enforced - see
+// UpdateService::normalizedDigest for why a malformed one is not a digest.
+//
+// The weakest rung is not nothing. A live lookup that moved us past the release
+// the feed described leaves no published digest to check against (GitHub serves
+// release assets from blob storage with no content hash in the headers, and
+// api.github.com is exactly what the live lookup exists to avoid), so the
+// transport is HTTPS to github.com and this is the corruption check on top.
+bool verifyDownload(const UpdateService::Item &it, const QString &tmp, QString &error)
+{
+    const auto mismatch = [&](const QString &kind) {
+        error = QCoreApplication::translate(
+                    "UpdateService",
+                    "%1 did not match the %2 published for it, so it was discarded. "
+                    "Try again - if it keeps happening, the release was replaced "
+                    "without the update list being rebuilt.")
+                    .arg(it.name, kind);
+    };
+
+    if (!it.hash.isEmpty()) {
+        const QString got = sha1Of(tmp);
+        if (!got.isEmpty() && got.compare(it.hash, Qt::CaseInsensitive) != 0) {
+            mismatch(QCoreApplication::translate("UpdateService", "SHA-1 checksum"));
+            return false;
+        }
+        return true;
+    }
+
+    if (!it.sha256.isEmpty()) {
+        const QString got = sha256Of(tmp);
+        if (!got.isEmpty() && got.compare(it.sha256, Qt::CaseInsensitive) != 0) {
+            mismatch(QCoreApplication::translate("UpdateService", "SHA-256 checksum"));
+            return false;
+        }
+        return true;
+    }
+
+    if (it.size > 0) {
+        const qint64 got = QFileInfo(tmp).size();
+        if (got != it.size) {
+            mismatch(QCoreApplication::translate("UpdateService", "size"));
+            return false;
+        }
+    }
+
+    if (it.id == QLatin1String("launcher") && !looksLikeWindowsBinary(tmp)) {
+        error = QCoreApplication::translate(
+                    "UpdateService",
+                    "%1 did not arrive as a program, so it was discarded. "
+                    "The download was probably interrupted or intercepted.")
+                    .arg(it.name);
+        return false;
+    }
+    return true;
 }
 
 bool applyItem(const UpdateService::Item &it, AppSettings &settings, QString &error,
@@ -104,22 +181,9 @@ bool applyItem(const UpdateService::Item &it, AppSettings &settings, QString &er
         QFile::remove(tmp);
         return false;
     }
-    if (!it.hash.isEmpty()) {
-        const QString got = sha1Of(tmp);
-        if (!got.isEmpty() && got.compare(it.hash, Qt::CaseInsensitive) != 0) {
-            QFile::remove(tmp);
-            error = QCoreApplication::translate("UpdateService", "SHA-1 mismatch for %1.").arg(it.name);
-            return false;
-        }
-    } else if (!it.sha256.isEmpty()) {
-        // A live lookup cannot reuse the feed's sha1, but GitHub publishes its
-        // own digest for the asset, so the download is still verified.
-        const QString got = sha256Of(tmp);
-        if (!got.isEmpty() && got.compare(it.sha256, Qt::CaseInsensitive) != 0) {
-            QFile::remove(tmp);
-            error = QCoreApplication::translate("UpdateService", "SHA-256 mismatch for %1.").arg(it.name);
-            return false;
-        }
+    if (!verifyDownload(it, tmp, error)) {
+        QFile::remove(tmp);
+        return false;
     }
     // Stamp what we actually downloaded. The feed's hash is meaningless once a
     // live lookup has moved us to a newer release.
@@ -220,6 +284,27 @@ bool applyItem(const UpdateService::Item &it, AppSettings &settings, QString &er
 
 namespace UpdateService {
 
+QString normalizedDigest(const QString &raw, int hexChars)
+{
+    const QString s = raw.trimmed().toLower();
+    if (s.isEmpty())
+        return {};
+    if (s.size() != hexChars) {
+        qWarning("update feed: ignoring a %lld-character digest where %d hex digits "
+                 "were expected (\"%s\")",
+                 static_cast<long long>(s.size()), hexChars, qPrintable(s));
+        return {};
+    }
+    for (const QChar c : s) {
+        if (!((c >= u'0' && c <= u'9') || (c >= u'a' && c <= u'f'))) {
+            qWarning("update feed: ignoring a digest that is not hexadecimal (\"%s\")",
+                     qPrintable(s));
+            return {};
+        }
+    }
+    return s;
+}
+
 Item Catalog::byId(const QString &id) const
 {
     for (const Item &it : items) {
@@ -277,7 +362,8 @@ Catalog fetch(QString &error)
         it.repo = o.value(QStringLiteral("repo")).toString();
         it.version = o.value(QStringLiteral("version")).toString();
         it.url = o.value(QStringLiteral("url")).toString();
-        it.hash = o.value(QStringLiteral("hash")).toString();
+        it.hash = normalizedDigest(o.value(QStringLiteral("hash")).toString(), 40);
+        it.sha256 = normalizedDigest(o.value(QStringLiteral("sha256")).toString(), 64);
         it.size = static_cast<qint64>(o.value(QStringLiteral("size")).toDouble());
         if (!it.id.isEmpty())
             cat.items << it;
@@ -300,7 +386,7 @@ Catalog fetch(QString &error)
             if (a.at(0).toString().compare(QLatin1String("boiii.exe"), Qt::CaseInsensitive) != 0)
                 continue;
             community.size = static_cast<qint64>(a.at(1).toDouble());
-            community.hash = a.at(2).toString();
+            community.hash = normalizedDigest(a.at(2).toString(), 40);
             community.url = a.at(3).toString();
             break;
         }
@@ -370,10 +456,15 @@ void resolveLatest(Catalog &cat, const AppSettings &settings)
             continue;
 
         it.feedVersion = it.version;
-        // The feed pinned a sha1 for the old asset; it cannot vouch for a newer
-        // one. Keep it only while the tag still matches what the feed described.
-        if (tag.compare(it.version, Qt::CaseInsensitive) != 0)
+        // The feed pinned a sha1 and a size for the old asset; neither can vouch
+        // for a newer one. Keep them only while the tag still matches what the
+        // feed described, and drop them together - a stale size fails a download
+        // exactly as wrongly as a stale digest does.
+        if (tag.compare(it.version, Qt::CaseInsensitive) != 0) {
             it.hash.clear();
+            it.sha256.clear();
+            it.size = 0;
+        }
         it.version = tag;
         it.url = target;
         it.live = true;
@@ -457,6 +548,8 @@ QList<Pending> detect(const Catalog &cat, const AppSettings &settings)
             if (settings.bo3Client != QLatin1String("competitive")
                 && stampedHash(it.id).isEmpty())
                 continue;
+            if (it.hash.isEmpty())
+                continue; // this one is decided by hash alone: no hash, no claim
             const QString exe = QDir(settings.bo3).filePath(QStringLiteral("boiii.exe"));
             QString local = stampedHash(it.id);
             if (local.isEmpty() && QFileInfo::exists(exe))

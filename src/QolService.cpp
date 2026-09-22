@@ -6,6 +6,7 @@
 #include "Version.h"
 
 #include <QCoreApplication>
+#include <QCryptographicHash>
 #include <QDateTime>
 #include <QDir>
 #include <QDirIterator>
@@ -156,10 +157,23 @@ QJsonArray githubReleases(const QString &repo, QString &error)
     return doc.array();
 }
 
+// A release asset, with everything GitHub will tell us about it. The digest
+// matters: these packs are hundreds of megabytes, and an 843 MB download that
+// arrives one bad block short only announces itself as "7-Zip failed (code 2)
+// ... CRC Failed" partway through unpacking, which reads like a broken pack
+// rather than a broken transfer.
+struct Asset {
+    QString url;
+    QString name;
+    QString tag;
+    QString sha256; // GitHub's own digest for the asset, bare hex
+    qint64 size = 0;
+    bool isValid() const { return !url.isEmpty(); }
+};
+
 // First .zip asset across releases (newest first) whose name matches `want`
 // and none of `avoid` (case-insensitive substrings).
-QString findAssetUrl(const QJsonArray &releases, const QStringList &want, const QStringList &avoid,
-                     QString *tagOut)
+Asset findAsset(const QJsonArray &releases, const QStringList &want, const QStringList &avoid)
 {
     for (const QJsonValue &rv : releases) {
         const QJsonObject rel = rv.toObject();
@@ -175,12 +189,22 @@ QString findAssetUrl(const QJsonArray &releases, const QStringList &want, const 
                 if (name.contains(x, Qt::CaseInsensitive)) ok = false;
             if (!ok)
                 continue;
-            if (tagOut)
-                *tagOut = rel.value(QStringLiteral("tag_name")).toString();
-            return a.value(QStringLiteral("browser_download_url")).toString();
+            Asset out;
+            out.url = a.value(QStringLiteral("browser_download_url")).toString();
+            out.name = name;
+            out.tag = rel.value(QStringLiteral("tag_name")).toString();
+            out.size = static_cast<qint64>(a.value(QStringLiteral("size")).toDouble());
+            // "sha256:<hex>" in the API; older responses omit it entirely.
+            const QString digest = a.value(QStringLiteral("digest")).toString().trimmed().toLower();
+            if (digest.startsWith(QLatin1String("sha256:"))) {
+                const QString hex = digest.mid(7);
+                if (hex.size() == 64)
+                    out.sha256 = hex;
+            }
+            return out;
         }
     }
-    return QString();
+    return {};
 }
 
 QString tempDir(const QString &tag)
@@ -190,22 +214,80 @@ QString tempDir(const QString &tag)
     return d;
 }
 
-bool downloadAndUnpack(const QString &url, const QString &tag, const QolService::Progress &p,
+QString sha256Of(const QString &path)
+{
+    QFile f(path);
+    if (!f.open(QIODevice::ReadOnly))
+        return {};
+    QCryptographicHash h(QCryptographicHash::Sha256);
+    while (!f.atEnd())
+        h.addData(f.read(4 * 1024 * 1024));
+    return QString::fromLatin1(h.result().toHex());
+}
+
+// Download the asset, check it against what GitHub published for it, then
+// unpack it.
+//
+// Two failures used to look identical here and they have opposite fixes, so
+// they are told apart. A download that does not match GitHub's digest arrived
+// damaged - worth retrying once, and worth saying so. A download that DOES
+// match and still will not unpack is a damaged *pack*: zm_qol-sounds.zip sat on
+// the releases page with one CRC-broken member inside it, and everyone who
+// tried to install it was shown raw "7-Zip failed (code 2) ... CRC Failed"
+// output, which reads like a fault on their own machine. It was not, and no
+// amount of retrying was ever going to fix it.
+bool downloadAndUnpack(const Asset &a, const QString &tag, const QolService::Progress &p,
                        QString &unpacked, QString &error)
 {
     const QString work = tempDir(tag);
     const QString zip = QDir(work).filePath(QStringLiteral("pack.zip"));
-    if (p) p(QObject::tr("Downloading..."), 5);
-    const bool ok = Downloader::downloadToFile(url, zip, error, [&](qint64 got, qint64 total) {
-        if (p) p(QObject::tr("Downloading..."), total > 0 ? int(5 + got * 65 / total) : 10);
-    }, 30 * 60 * 1000);
-    if (!ok)
+    const bool canVerify = !a.sha256.isEmpty() || a.size > 0;
+    bool verified = false;
+
+    for (int attempt = 1; attempt <= 2 && !verified; ++attempt) {
+        if (p) p(attempt == 1 ? QObject::tr("Downloading...")
+                              : QObject::tr("The download was damaged; trying again..."), 5);
+        if (!Downloader::downloadToFile(a.url, zip, error, [&](qint64 got, qint64 total) {
+                if (p) p(QObject::tr("Downloading..."), total > 0 ? int(5 + got * 65 / total) : 10);
+            }, 30 * 60 * 1000))
+            return false;
+
+        if (!canVerify)
+            break; // nothing published to check against; carry on as before
+
+        if (p) p(QObject::tr("Checking the download..."), 70);
+        QString bad;
+        if (a.size > 0 && QFileInfo(zip).size() != a.size)
+            bad = QObject::tr("it is %1 bytes and should be %2")
+                      .arg(QFileInfo(zip).size()).arg(a.size);
+        else if (!a.sha256.isEmpty() && sha256Of(zip).compare(a.sha256, Qt::CaseInsensitive) != 0)
+            bad = QObject::tr("its contents do not match the published checksum");
+
+        if (bad.isEmpty()) {
+            verified = true;
+        } else {
+            QFile::remove(zip);
+            error = QObject::tr("%1 did not download correctly - %2. Check your "
+                                "connection and try again.").arg(a.name, bad);
+        }
+    }
+    if (canVerify && !verified)
         return false;
+
     if (p) p(QObject::tr("Unpacking..."), 72);
     unpacked = QDir(work).filePath(QStringLiteral("unpacked"));
     QDir().mkpath(unpacked);
-    if (!ArchiveTool::extractToDirectory(zip, unpacked, &error))
+    if (!ArchiveTool::extractToDirectory(zip, unpacked, &error)) {
+        if (verified) {
+            error = QObject::tr(
+                        "%1 downloaded correctly, but it cannot be unpacked: the pack "
+                        "published on GitHub is itself damaged. This is not your "
+                        "connection or your PC, and retrying will not help. Nothing on "
+                        "your game was changed.\n\n%2").arg(a.name, error);
+        }
+        QDir(work).removeRecursively();
         return false;
+    }
     QFile::remove(zip);
     return true;
 }
@@ -340,14 +422,13 @@ bool installMod(const AppSettings &s, const SeriesMod &m, const Progress &p, QSt
     const QJsonArray rels = githubReleases(m.repo, error);
     if (rels.isEmpty())
         return false;
-    QString tag;
-    const QString url = findAssetUrl(rels, {}, {"texture", "sound", "controller", "icon", "portable"}, &tag);
-    if (url.isEmpty()) {
+    const Asset asset = findAsset(rels, {}, {"texture", "sound", "controller", "icon", "portable"});
+    if (!asset.isValid()) {
         error = QObject::tr("No mod package found in the releases of %1.").arg(m.repo);
         return false;
     }
     QString unpacked;
-    if (!downloadAndUnpack(url, QStringLiteral("mod"), p, unpacked, error))
+    if (!downloadAndUnpack(asset, QStringLiteral("mod"), p, unpacked, error))
         return false;
     const QString src = findModDir(unpacked);
     if (src.isEmpty()) {
@@ -415,13 +496,13 @@ bool installPack(const AppSettings &s, Pack pack, const Progress &p, QString &er
     if (rels.isEmpty())
         return false;
     const QString keyword = pack == Pack::Textures ? QStringLiteral("texture") : QStringLiteral("sound");
-    const QString url = findAssetUrl(rels, {keyword}, {}, nullptr);
-    if (url.isEmpty()) {
+    const Asset asset = findAsset(rels, {keyword}, {});
+    if (!asset.isValid()) {
         error = QObject::tr("No %1 pack found in the releases of %2.").arg(keyword, t6.repo);
         return false;
     }
     QString unpacked;
-    if (!downloadAndUnpack(url, packKind(pack), p, unpacked, error))
+    if (!downloadAndUnpack(asset, packKind(pack), p, unpacked, error))
         return false;
     const QString src = packRoot(unpacked, packKind(pack));
     if (p) p(QObject::tr("Copying files..."), 85);
@@ -480,13 +561,13 @@ bool installController(const AppSettings &s, const QString &pack, const Progress
         const QJsonArray rels = githubReleases(t6.repo, error);
         if (rels.isEmpty())
             return false;
-        const QString url = findAssetUrl(rels, {"controller"}, {}, nullptr);
-        if (url.isEmpty()) {
+        const Asset asset = findAsset(rels, {"controller"}, {});
+        if (!asset.isValid()) {
             error = QObject::tr("No controller icon pack found in the releases of %1.").arg(t6.repo);
             return false;
         }
         QString unpacked;
-        if (!downloadAndUnpack(url, QStringLiteral("controller"), p, unpacked, error))
+        if (!downloadAndUnpack(asset, QStringLiteral("controller"), p, unpacked, error))
             return false;
         QDir(cache).removeRecursively();
         QDir().mkpath(QFileInfo(cache).absolutePath());

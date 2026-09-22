@@ -12,6 +12,15 @@ namespace UpdateService
     inline const char kFeedUrl[] =
         QOL_UPDATE_FEED_URL;
 
+    // A digest is only a digest if it can actually be compared against. The
+    // feed is hand-maintained, and a typo in it must never be able to fail a
+    // download: v2.2.1 published a 39-character sha1, and because "not empty"
+    // was the only test, every installed copy refused its own update with
+    // "SHA-1 mismatch" until the feed was corrected by hand. Anything that is
+    // not exactly hexChars lowercase hex digits is dropped, with a warning, and
+    // the download falls back to the next-strongest check.
+    QString normalizedDigest(const QString &raw, int hexChars);
+
     struct Item {
         QString id;
         QString name;
@@ -19,7 +28,7 @@ namespace UpdateService
         QString version;
         QString url;
         QString hash;     // sha1 from the feed; empty once resolved live
-        QString sha256;   // GitHub's own asset digest, when the API gives one
+        QString sha256;   // stronger digest, when the feed carries one
         QString feedVersion; // what the feed claimed, kept after a live lookup
         qint64 size = 0;
         bool live = false; // version/url came from the source repo, not the feed

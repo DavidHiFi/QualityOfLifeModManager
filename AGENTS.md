@@ -81,6 +81,27 @@ cannot reach keeps the feed's values, so offline degrades to the old behaviour.
 It only asks about components that are actually installed. Check it with
 `-checkupdates`, which prints `live` or `feed` per component.
 
+**A checksum the app cannot use is not a checksum, and must never be able to
+fail a download.** v2.2.1's feed carried a 39-character sha1 - the feed was
+hand-edited because api.github.com would not resolve that day, and one
+character was lost. `!hash.isEmpty()` was the only test, so it was enforced,
+matched nothing, and every installed copy refused its own update with "SHA-1
+mismatch for QualityOfLifeModManager.update.bin". The app could not recover on
+its own; the feed had to be corrected. Now `UpdateService::normalizedDigest`
+drops anything that is not exactly 40 (or 64) lowercase hex digits, warns, and
+the download falls back to the next-strongest check - GitHub's sha256, then the
+published size, then, for the launcher payload, that it is a real PE. Digests
+and sizes are dropped *together* when a live lookup moves past the release the
+feed described: a stale size fails a download exactly as wrongly as a stale
+digest. `-selftest` covers all of this, and checks the live feed's digests too.
+
+**Regenerate the feed, never edit it by hand.** `python scripts/gen_update.py`
+refuses to write a malformed digest, and falls back to the release redirect
+when api.github.com is unreachable, which is the situation that caused the
+hand-edit. Before committing a feed, run
+`python scripts/gen_update.py --verify qol_update.json`: it downloads every
+item and checks the digest and size actually served.
+
 **Never decide "there is an update" by comparing two version strings for
 inequality.** Use `VersionCompare::isUpdate(have, latest)`, which only says yes
 when both sides parse as a plain dotted version and `latest` is strictly ahead.
@@ -91,6 +112,27 @@ the catalog's `version`. Comparing them raw is what made every Home card say
 quiet about a new release is a much smaller failure than one that cries wolf
 permanently. `HomeCatalog::presenceOf` prefers the installed `mod.json` version,
 because that is what the catalog quotes; the release tag is only a fallback.
+
+**A bad download and a bad pack look identical and have opposite fixes.** The
+optional packs are hundreds of megabytes each, and `downloadAndUnpack` used to
+hand whatever arrived straight to 7-Zip. When `zm_qol-sounds.zip` turned out to
+have one CRC-broken member inside it, every user who pressed Install was shown
+raw `7-Zip failed (code 2) ... ERROR: CRC Failed : zone\zmb_common.english.sabs`
+and had no way to tell that the fault was on the releases page, not on their PC.
+It had been that way since v2.14.28. So: `findAsset` now carries GitHub's own
+`digest` (`sha256:<hex>`) and `size` for the asset, the download is checked
+against both, and a failure is retried **once**. If the download matches and the
+unpack still fails, the pack itself is damaged - say exactly that, and do not
+retry. Re-cut a damaged pack from `t6\mods\zm_qol\Optionals\`, confirm with
+`7z t`, and `gh release upload --clobber` it to **every** release that carries
+it; the app scans releases newest-first, so an old corrupt copy is still
+reachable until it is replaced.
+
+**A digest proves the transfer, not the contents.** The corrupt sounds pack
+matched its published sha256 perfectly - the bytes were damaged before upload,
+so GitHub hashed the damage. The only thing that catches that is testing the
+archive, which is why a verified-but-unpackable download is reported as a
+damaged pack rather than a network problem.
 
 **Removing something must remove it, not just un-apply a manifest.**
 `installed-<kind>.txt` lists what this app installed, and for texture and sound
@@ -161,9 +203,8 @@ redirect stdout to a file rather than reading it off the pipe.
 ## Releasing
 
 1. Bump `CLL_VERSION` in `src/Version.h`.
-2. `powershell -ExecutionPolicy Bypass -File scriptsuild.ps1 -Clean`, then
-   `powershell -ExecutionPolicy Bypass -File scriptsuild-setup.ps1 -NsisDir H:\Plutonium	ools\w64devkit\share
-sis`,
+2. `powershell -ExecutionPolicy Bypass -File scripts\build.ps1 -Clean`, then
+   `powershell -ExecutionPolicy Bypass -File scripts\build-setup.ps1 -NsisDir H:\Plutonium\tools\w64devkit\share\nsis`,
    which verifies every imported DLL, checks a contained extraction of the finished
    installer, and writes `release\QualityOfLifeModManagerSetup.exe`,
    `release\QualityOfLifeModManager-portable.zip`, and
@@ -183,10 +224,12 @@ sis`,
 
 ### Publishing when api.github.com will not resolve
 
-`gh release create` cannot run on this machine and `gh auth status` reports the
-token as invalid, which is misleading: `GH_TOKEN` is fine, the local resolver
-(10.64.0.1) just hands back dead addresses for the API hosts. Pin known-good
-ones per call instead - never edit DNS or the hosts file:
+This comes and goes. As of 2026-09-23 the API resolves here and plain `gh`
+works, so try `gh` first and only fall back to the pinned addresses below if it
+fails. When it *is* blocked, `gh auth status` reports the token as invalid,
+which is misleading: `GH_TOKEN` is fine, the local resolver (10.64.0.1) just
+hands back dead addresses for the API hosts. Pin known-good ones per call
+instead - never edit DNS or the hosts file:
 
 ```
 api.github.com     140.82.112.5     (.113.5, .114.5 also work)

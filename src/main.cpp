@@ -353,6 +353,51 @@ int main(int argc, char *argv[])
                   VersionCompare::isUpdate(QStringLiteral("v2.16.16"), QStringLiteral("v2.17.0")));
         }
 
+        // The updater's digests. v2.2.1's feed carried a 39-character sha1 - one
+        // hand-typed character short - and because "not empty" was the only
+        // test, it could not match any file that has ever existed. Every
+        // installed copy refused its own update. A digest the app cannot use
+        // must be dropped, not enforced.
+        {
+            const QString real = QStringLiteral("7e2ac1f2c5456b90833a95af8bbddda6736d517b");
+            const QString short1 = QStringLiteral("7e2ac1f2c5456b90833a95af8bddda6736d517b");
+            check("digest: a good sha1 survives",
+                  UpdateService::normalizedDigest(real, 40) == real);
+            check("digest: the v2.2.1 short sha1 is dropped",
+                  UpdateService::normalizedDigest(short1, 40).isEmpty(),
+                  QString::number(short1.size()) + " chars");
+            check("digest: an over-long sha1 is dropped",
+                  UpdateService::normalizedDigest(real + QStringLiteral("a"), 40).isEmpty());
+            check("digest: a non-hex sha1 is dropped",
+                  UpdateService::normalizedDigest(
+                      QStringLiteral("7e2ac1f2c5456b90833a95af8bbddda6736d517z"), 40).isEmpty());
+            check("digest: whitespace and case are normalised",
+                  UpdateService::normalizedDigest(QStringLiteral("  ") + real.toUpper()
+                                                      + QStringLiteral("\n"), 40) == real);
+            check("digest: empty stays empty",
+                  UpdateService::normalizedDigest(QString(), 40).isEmpty());
+            check("digest: a sha1 is not accepted as a sha256",
+                  UpdateService::normalizedDigest(real, 64).isEmpty());
+        }
+
+        // The live feed, as served. This is the check that would have caught
+        // v2.2.1 before anyone clicked Update now.
+        {
+            QString feedErr;
+            const UpdateService::Catalog cat = UpdateService::fetch(feedErr);
+            if (cat.items.isEmpty()) {
+                note("feed", feedErr.isEmpty() ? QStringLiteral("unreachable") : feedErr);
+            } else {
+                for (const UpdateService::Item &it : cat.items) {
+                    // fetch() has already dropped anything malformed, so an
+                    // empty hash on a feed item is the symptom.
+                    check("feed digest usable: " + it.id, !it.hash.isEmpty(),
+                          it.hash.isEmpty() ? QStringLiteral("malformed in the feed")
+                                            : it.hash);
+                }
+            }
+        }
+
         // ...and what the real install actually reports, for the record.
         {
             const HomeCatalog::Catalog cat = HomeCatalog::load();

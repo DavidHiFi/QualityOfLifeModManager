@@ -9,3 +9,7 @@ CMakeLists.txt.user
 .qtc_clangd/
 CMakeCache.txt
 .cll_update_cache/
+
+# Python bytecode from running scripts/ in place
+__pycache__/
+*.pyc

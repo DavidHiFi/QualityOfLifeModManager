@@ -294,11 +294,36 @@ void PlayPage::updateLaunchOptions()
     m_lanBtn->setVisible(plutoGame);
     m_onlineBtn->setVisible(plutoGame);
     m_reshade->setVisible(plutoGame);
-    // DLSS 5 is Black Ops II only, LAN only, and only once its payload is on
-    // the PC. Online never gets it: add-ons need the build of ReShade this
-    // app keeps for LAN.
-    m_dlss5->setVisible(plutoGame && code == QLatin1String("t6") && !m_settings.launchOnline
-                        && m_settings.launchReShade && QolService::dlssPayloadReady(m_settings));
+    // DLSS 5 is LAN only, and only once its payload is on the PC. Online
+    // never gets it: add-ons need the build of ReShade this app keeps for
+    // LAN.
+    //
+    // All four Plutonium games share one bin folder, so the add-on build of
+    // ReShade reaches every one of them - but DLSS does not, and the reason
+    // is the games, not the plumbing. Read out of their own executables:
+    // Black Ops II is Direct3D 11, while World at War, Black Ops and Modern
+    // Warfare 3 are all Direct3D 9, and DLSS5-Feeder needs 11 or newer. The
+    // box stays visible on those three and says why rather than vanishing.
+    const bool dlssShown = plutoGame && !m_settings.launchOnline && m_settings.launchReShade
+                           && QolService::dlssPayloadReady(m_settings);
+    m_dlss5->setVisible(dlssShown);
+    if (dlssShown) {
+        const bool canDlss = code == QLatin1String("t6");
+        m_dlss5->setEnabled(canDlss);
+        if (!canDlss) {
+            m_dlss5->setToolTip(tr("%1 renders with Direct3D 9. DLSS needs Direct3D 11 or newer, so the "
+                                   "neural pass cannot attach to it. ReShade itself still runs here with "
+                                   "full add-on support - only DLSS is unavailable.")
+                                    .arg(GameCatalog::byId(m_gameId).title));
+        } else {
+            m_dlss5->setToolTip(tr("NVIDIA DLSS 5 neural rendering, LAN only, through the DLSS5-Feeder add-on. "
+                                   "It is a separate choice from ReShade because it is not free: the neural "
+                                   "pass runs in a 64-bit helper process and this 32-bit engine waits on the "
+                                   "round trip, which measured 120 fps down to 30 on an RTX 4070 at 1440p. "
+                                   "Leave it off to play, turn it on for the look. Press F10 in game for its "
+                                   "panel."));
+        }
+    }
     if (!plutoGame) {
         m_modeHint->clear();
         return;

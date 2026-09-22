@@ -54,6 +54,11 @@ inline QColor kArtTextOn()   { return Theme::color("HERO_TEXT"); }
 
 constexpr int kBox = 18;   // lado do indicador
 constexpr int kGap = 10;   // espaco entre indicador e texto
+// The focus ring is drawn 3px outside the indicator. The indicator used to
+// start at x=1, which put the ring at x=-2: clicking a checkbox drew a
+// rounded outline whose left side was cut off by the widget edge. The box
+// starts far enough in for the ring to fit, and sizeHint pays for it.
+constexpr int kFocusPad = 3;
 } // namespace detail
 
 class CheckBox : public QCheckBox
@@ -69,7 +74,8 @@ public:
     QSize sizeHint() const override
     {
         const QFontMetrics fm(font());
-        const int w = detail::kBox + detail::kGap + fm.horizontalAdvance(text()) + 4;
+        const int w = detail::kFocusPad + detail::kBox + detail::kGap
+                    + fm.horizontalAdvance(text()) + 4;
         const int h = qMax(detail::kBox + 8, fm.height() + 8);
         return QSize(w, h);
     }
@@ -101,7 +107,7 @@ protected:
         const bool hov = underMouse() && isEnabled();
         const bool off = !isEnabled();
 
-        QRectF box(1.0, (height() - kBox) / 2.0, kBox - 1.0, kBox - 1.0);
+        QRectF box(kFocusPad + 1.0, (height() - kBox) / 2.0, kBox - 1.0, kBox - 1.0);
 
         const int rad = kR();
         p.setRenderHint(QPainter::Antialiasing, rad > 0);
@@ -120,7 +126,10 @@ protected:
         if (hasFocus()) {
             p.setPen(QPen(kAccent(), 1.0));
             p.setBrush(Qt::NoBrush);
-            p.drawRoundedRect(box.adjusted(-3, -3, 3, 3), rad ? 7 : 0, rad ? 7 : 0);
+            p.setRenderHint(QPainter::Antialiasing, true);
+            p.drawRoundedRect(box.adjusted(-kFocusPad, -kFocusPad, kFocusPad, kFocusPad),
+                              rad ? 7 : 0, rad ? 7 : 0);
+            p.setRenderHint(QPainter::Antialiasing, rad > 0);
         }
 
         p.setPen(QPen(border, 2.0));
@@ -140,7 +149,8 @@ protected:
             p.drawPath(tick);
         }
 
-        const QRect textRect(kBox + kGap, 0, width() - kBox - kGap, height());
+        const int textLeft = int(box.right()) + kGap;
+        const QRect textRect(textLeft, 0, width() - textLeft, height());
         const bool art = property("onArt").toBool();
         p.setPen(off ? kTextOff()
                      : (on || hov ? (art ? kArtTextOn() : kTextOn())

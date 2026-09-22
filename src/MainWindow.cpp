@@ -105,6 +105,11 @@ MainWindow::MainWindow(QWidget *parent)
     I18n::apply(m_settings.language);
     Theme::apply(m_settings.theme);
 
+    // A watchdog left running by a session that was killed rather than closed
+    // keeps restoring files by the rules of the script version it loaded. Take
+    // it down before anything in this session decides what bin should hold.
+    GameLauncher::stopReShadeWatchdog();
+
     if (!m_settings.setupCompleted) {
         SetupWizard wizard(m_settings, nullptr);
         wizard.exec();

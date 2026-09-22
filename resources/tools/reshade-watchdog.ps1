@@ -44,6 +44,19 @@ try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch { }
 $LogFile = Join-Path $PSScriptRoot 'reshade-watchdog.log'
 try { Start-Transcript -Path $LogFile -Append -ErrorAction Stop | Out-Null } catch { }
 
+# ---------------------------------------------------------------------------
+#  Leave a pid behind so the app can stop a watchdog it did not start.
+#
+#  The manager only remembered the pid of the watchdog from its own session.
+#  Kill the app rather than closing it - or let it crash - and this process
+#  keeps running with whatever rules were compiled into the copy of the script
+#  it loaded at startup. A stale one restored the whole DLSS payload into a
+#  session that had switched DLSS off, and it did it one second after launch,
+#  which reads exactly like the app putting the files back itself.
+# ---------------------------------------------------------------------------
+$PidFile = Join-Path $PSScriptRoot 'reshade-watchdog.pid'
+try { Set-Content -LiteralPath $PidFile -Value $PID -Encoding ASCII } catch { }
+
 $BinDir   = Join-Path $PlutoRoot 'bin'
 # 🛑 Must match kReShadeVault in QolService.cpp exactly - that is the writer side.
 $VaultDir = Join-Path $PlutoRoot 'storage\t6\_zm_qol_installer\reshade-vault'

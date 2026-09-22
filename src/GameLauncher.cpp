@@ -318,6 +318,24 @@ bool reShadeInstalled(const QString &plutoniumRoot)
 
 qint64 g_watchdogPid = 0;
 
+// The watchdog writes its own pid here at startup. Remembering it in this
+// process is not enough: if the app is killed rather than closed, or it
+// crashes, closeEvent never runs, the watchdog outlives it, and the next
+// session gets a second one - with the rules baked into whichever copy of
+// the script the old one loaded. One of those restored a whole DLSS payload
+// into a session that had deliberately switched DLSS off.
+QString watchdogPidFile()
+{
+    return QDir(toolsDir()).filePath(QStringLiteral("reshade-watchdog.pid"));
+}
+
+void killWatchdog(qint64 pid)
+{
+    if (pid > 0 && isPidRunning(pid))
+        QProcess::execute(QStringLiteral("taskkill"), {QStringLiteral("/PID"), QString::number(pid),
+                                                        QStringLiteral("/T"), QStringLiteral("/F")});
+}
+
 qint64 runningReShadeWatchdog()
 {
     return (g_watchdogPid > 0 && isPidRunning(g_watchdogPid)) ? g_watchdogPid : 0;
@@ -325,10 +343,16 @@ qint64 runningReShadeWatchdog()
 
 void stopReShadeWatchdog()
 {
-    if (g_watchdogPid > 0 && isPidRunning(g_watchdogPid))
-        QProcess::execute(QStringLiteral("taskkill"), {QStringLiteral("/PID"), QString::number(g_watchdogPid),
-                                                        QStringLiteral("/T"), QStringLiteral("/F")});
+    killWatchdog(g_watchdogPid);
     g_watchdogPid = 0;
+    // And any left behind by a session that did not get to close cleanly.
+    QFile f(watchdogPidFile());
+    if (f.open(QIODevice::ReadOnly)) {
+        const qint64 stray = QString::fromUtf8(f.readAll()).trimmed().toLongLong();
+        f.close();
+        killWatchdog(stray);
+    }
+    QFile::remove(watchdogPidFile());
 }
 
 qint64 startReShadeWatchdog(const QString &plutoniumRoot, QString &error)
@@ -341,6 +365,9 @@ qint64 startReShadeWatchdog(const QString &plutoniumRoot, QString &error)
     // One watchdog per app session is enough; it watches every launch.
     if (const qint64 live = runningReShadeWatchdog())
         return live;
+    // Nothing from a previous session gets to keep running: it would be
+    // enforcing the rules of whatever script version it started with.
+    stopReShadeWatchdog();
     QString verifier;
     if (!unpackTool(QStringLiteral("reshade-verify.ps1"), verifier, error))
         return 0;

@@ -42,8 +42,8 @@ private:
 
     // ReShade for the session about to start: the right build in bin, or
     // none at all when the box is unticked.
-    void prepareReShade(QolService::ReShadeMode mode, bool wantDlss);
-    void startReShadeWatchdogIfWanted();
+    bool prepareReShade(QolService::ReShadeMode mode, bool wantDlss);
+    bool startReShadeWatchdogIfWanted();
 
     QWidget *buildSidebar();
     QWidget *buildHeader();

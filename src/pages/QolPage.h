@@ -2,6 +2,7 @@
 #include <QWidget>
 #include <QList>
 #include <functional>
+#include "../QolService.h"
 
 class QLabel;
 class QPushButton;
@@ -34,7 +35,8 @@ private:
         QPushButton *secondary = nullptr;
     };
     Row addRow(QVBoxLayout *into, const QString &kicker, const QString &title, const QString &desc);
-    void runJob(const QString &title, const std::function<bool(QString &, const std::function<void(const QString &, int)> &)> &job);
+    void runJob(const QString &title, const std::function<bool(QString &, const std::function<void(const QString &, int)> &)> &job,
+                const std::function<void(bool)> &finished = {});
     bool confirm(const QString &title, const QString &text);
     void openUrl(const QString &url);
 
@@ -44,4 +46,6 @@ private:
     QList<Row> m_modRows;     // parallel to QolService::series()
     Row m_textures, m_sounds, m_controller, m_reshade, m_dlss;
     QStringList m_latest;     // cached latest tags, parallel to series()
+    QolService::DlssRelease m_dlssRelease;
+    bool m_dlssCheckStarted = false;
 };

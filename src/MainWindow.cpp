@@ -192,6 +192,7 @@ MainWindow::MainWindow(QWidget *parent)
     connect(m_playPage, &PlayPage::launchOnlineRequested, this, &MainWindow::onLaunchOnline);
     connect(m_qolPage, &QolPage::installedChanged, this, [this]() {
         m_modsPage->refreshList();
+        m_playPage->syncLaunchOptions();
         if (m_homePage)
             m_homePage->refreshInstallState();
     });
@@ -634,25 +635,34 @@ void MainWindow::syncNav()
 // a watchdog: ticked means ReShade is there and is the right build for where
 // you are playing, unticked means it is gone. Both are made true here, before
 // the game starts, because bin cannot be written once it is running.
-void MainWindow::prepareReShade(QolService::ReShadeMode mode, bool wantDlss)
+bool MainWindow::prepareReShade(QolService::ReShadeMode mode, bool wantDlss)
 {
+    GameLauncher::stopReShadeWatchdog();
     QString err;
     if (!m_settings.launchReShade) {
-        if (!QolService::ensureReShadeAbsent(m_settings, err) && !err.isEmpty())
+        if (!QolService::ensureReShadeAbsent(m_settings, err)) {
             Dialogs::error(this, err);
-        return;
+            return false;
+        }
+        return true;
     }
-    if (!QolService::applyReShadeMode(m_settings, mode, wantDlss, err) && !err.isEmpty())
+    if (!QolService::applyReShadeMode(m_settings, mode, wantDlss, err)) {
         Dialogs::error(this, err);
+        return false;
+    }
+    return true;
 }
 
-void MainWindow::startReShadeWatchdogIfWanted()
+bool MainWindow::startReShadeWatchdogIfWanted()
 {
     if (!m_settings.launchReShade)
-        return;
+        return true;
     QString err;
-    if (!GameLauncher::startReShadeWatchdog(m_settings.plutoniumInstance, err))
+    if (!GameLauncher::startReShadeWatchdog(m_settings.plutoniumInstance, err)) {
         Dialogs::error(this, err);
+        return false;
+    }
+    return true;
 }
 
 void MainWindow::onLaunchGame(const QString &gameId, const QString &mode)
@@ -679,18 +689,21 @@ void MainWindow::onLaunchGame(const QString &gameId, const QString &mode)
     // LAN is not signed in to anything, so it gets the add-on build of ReShade
     // and, on Black Ops II, DLSS 5 with it. This has to happen before the game
     // starts: once the bootstrapper has dxgi.dll open it cannot be replaced.
-    prepareReShade(QolService::ReShadeMode::Lan,
-                   m_settings.launchDlss5 && gameId == QLatin1String("Black ops II"));
+    if (!prepareReShade(QolService::ReShadeMode::Lan,
+                       m_settings.launchDlss5 && gameId == QLatin1String("Black ops II")))
+        return;
+    if (!startReShadeWatchdogIfWanted())
+        return;
 
     const GameLauncher::Result result = GameLauncher::launch(m_settings, m_modsPage->selectedMod());
     if (result.hasError) {
+        GameLauncher::stopReShadeWatchdog();
         if (!result.errorText.isEmpty())
             Dialogs::error(this, result.errorText);
         else
             Dialogs::info(this, result.errorMsg, m_settings);
         return;
     }
-    startReShadeWatchdogIfWanted();
     m_runningPid = result.pid;
     m_runningGameId = gameId;
     m_playPage->setRunning(true);
@@ -712,8 +725,6 @@ void MainWindow::onLaunchOnline(const QString &gameId, const QString &mode)
     // Online is signed in to Plutonium, so it gets the stock build and none of
     // the add-ons: the feeder, its 64-bit host and the DLSS entries in the
     // preset all come back out of bin before the session starts.
-    prepareReShade(QolService::ReShadeMode::Online, false);
-
     GameLauncher::Result result = GameLauncher::launchOnline(m_settings);
     if (result.needsLogin) {
         // No account signed in yet, or the saved one expired. Ask once, then

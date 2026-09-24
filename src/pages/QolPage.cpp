@@ -9,7 +9,6 @@
 
 #include <QDesktopServices>
 #include <QDir>
-#include <QFileDialog>
 #include <QFrame>
 #include <QHBoxLayout>
 #include <QLabel>
@@ -77,10 +76,9 @@ QolPage::QolPage(AppSettings &settings, QWidget *parent)
                           "every start, so play with the ReShade option on the game page (or start the watchdog "
                           "here) and the files are put back the moment the game opens."));
     m_dlss = addRow(root, tr("LAN ONLY"), tr("DLSS 5 Neural Rendering"),
-                    tr("NVIDIA DLSS 5 in Black Ops II, through the DLSS5-Feeder ReShade add-on. Add-ons need the "
-                       "full build of ReShade, which the manager only puts in place for LAN - online keeps the "
-                       "stock build, whose add-on support is deliberately limited. Needs an RTX card and the "
-                       "237 MB payload imported from a folder that already has DLSS 5 installed."));
+                    tr("One click downloads and checks the DLSS 5 payload for Black Ops II. The manager enables "
+                       "it for LAN play and removes its add-on, helper and neural preset before online play. "
+                       "Needs an RTX card; the download is about 230 MB."));
     root->addStretch();
 
     scroll->setWidget(inner);
@@ -185,32 +183,35 @@ QolPage::QolPage(AppSettings &settings, QWidget *parent)
             QMessageBox::warning(this, tr("ReShade"), err);
     });
     connect(m_dlss.primary, &QPushButton::clicked, this, [this]() {
-        QString err;
         if (QolService::dlssPayloadReady(m_settings)) {
-            if (!confirm(tr("DLSS 5"), tr("Remove the imported DLSS 5 payload? LAN keeps the add-on build of "
-                                          "ReShade; only DLSS stops being offered.")))
-                return;
-            QDir(QolService::reShadeLanVault(m_settings)).removeRecursively();
-            if (!QolService::applyReShadeMode(m_settings, QolService::ReShadeMode::Online, false, err)
-                && !err.isEmpty())
-                QMessageBox::warning(this, tr("DLSS 5"), err);
-            refresh();
+            runJob(tr("Removing DLSS 5"), [this](QString &err, const QolService::Progress &) {
+                return QolService::removeDlssPayload(m_settings, err);
+            }, [this](bool ok) {
+                if (ok) {
+                    m_settings.launchDlss5 = false;
+                    m_settings.saveToIni();
+                }
+            });
             return;
         }
-        // The payload is 237 MB of NVIDIA runtimes under their own licence, so
-        // it is never shipped with this app: it is imported from a folder on
-        // this PC that already has DLSS 5 working.
-        const QString donor = QFileDialog::getExistingDirectory(
-            this, tr("Pick a game folder that already has DLSS 5 installed"),
-            m_settings.bo2.isEmpty() ? QDir::homePath() : m_settings.bo2);
-        if (donor.isEmpty())
-            return;
-        runJob(tr("Importing the DLSS 5 payload"),
-               [this, donor](QString &e, const std::function<void(const QString &, int)> &p) {
-                   p(tr("Copying the DLSS 5 runtimes"), 10);
-                   return QolService::importDlssPayload(m_settings, donor, e);
-               });
-        refresh();
+        runJob(tr("Installing DLSS 5"), [this](QString &err, const QolService::Progress &p) {
+            QolService::DlssRelease release;
+            if (!QolService::latestDlssRelease(release, err)) return false;
+            return QolService::installDlssPayload(m_settings, release, p, err);
+        }, [this](bool ok) {
+            if (ok) {
+                m_settings.launchReShade = true;
+                m_settings.launchDlss5 = true;
+                m_settings.saveToIni();
+            }
+        });
+    });
+    connect(m_dlss.secondary, &QPushButton::clicked, this, [this]() {
+        runJob(tr("Updating DLSS 5"), [this](QString &err, const QolService::Progress &p) {
+            QolService::DlssRelease release;
+            if (!QolService::latestDlssRelease(release, err)) return false;
+            return QolService::installDlssPayload(m_settings, release, p, err);
+        });
     });
 
     retranslate();
@@ -341,13 +342,19 @@ void QolPage::refresh()
     m_reshade.secondary->setVisible(rs);
 
     const bool dlss = QolService::dlssPayloadReady(m_settings);
-    m_dlss.status->setText(dlss ? tr("Imported: %1 Used on LAN launches of Black Ops II.")
+    m_dlss.status->setText(dlss ? tr("Installed: %1 Used on LAN launches of Black Ops II.")
                                       .arg(QolService::dlssPayloadSummary(m_settings))
-                                : tr("Not imported. LAN still gets the add-on build of ReShade."));
-    m_dlss.primary->setText(dlss ? tr("Remove") : tr("Import"));
+                                : tr("Not installed. Press Install to download the verified payload."));
+    m_dlss.primary->setText(dlss ? tr("Remove") : tr("Install"));
     m_dlss.primary->setProperty("cssClass", dlss ? "danger" : "primary");
     m_dlss.primary->setEnabled(pluto);
-    m_dlss.secondary->setVisible(false);
+    const QString installedVersion = QolService::installedDlssVersion(m_settings);
+    const bool update = dlss && m_dlssRelease.isValid()
+                        && (installedVersion.isEmpty()
+                            || VersionCompare::isUpdate(installedVersion, m_dlssRelease.version));
+    m_dlss.secondary->setText(tr("Update to %1").arg(m_dlssRelease.version));
+    m_dlss.secondary->setVisible(update);
+    m_dlss.secondary->setEnabled(pluto);
 
     // Re-polish the buttons whose cssClass flipped.
     for (QPushButton *b : {m_textures.primary, m_sounds.primary, m_reshade.primary, m_dlss.primary}) {
@@ -375,10 +382,26 @@ void QolPage::refresh()
         });
         Q_UNUSED(future);
     }
+    if (!m_dlssCheckStarted) {
+        m_dlssCheckStarted = true;
+        const QPointer<QolPage> guard(this);
+        auto future = QtConcurrent::run([guard]() {
+            QolService::DlssRelease release;
+            QString err;
+            QolService::latestDlssRelease(release, err);
+            QMetaObject::invokeMethod(qApp, [guard, release]() {
+                if (!guard) return;
+                guard->m_dlssRelease = release;
+                guard->refresh();
+            }, Qt::QueuedConnection);
+        });
+        Q_UNUSED(future);
+    }
 }
 
 void QolPage::runJob(const QString &title,
-                     const std::function<bool(QString &, const std::function<void(const QString &, int)> &)> &job)
+                     const std::function<bool(QString &, const std::function<void(const QString &, int)> &)> &job,
+                     const std::function<void(bool)> &finished)
 {
     auto *progress = new ProgressDialog(title, this);
     progress->setAttribute(Qt::WA_DeleteOnClose);
@@ -387,7 +410,7 @@ void QolPage::runJob(const QString &title,
     progress->show();
     const QPointer<ProgressDialog> guard(progress);
     const QPointer<QolPage> self(this);
-    auto future = QtConcurrent::run([self, guard, job, title]() {
+    auto future = QtConcurrent::run([self, guard, job, title, finished]() {
         auto report = [guard](const QString &text, int pct) {
             QMetaObject::invokeMethod(qApp, [guard, text, pct]() {
                 if (!guard) return;
@@ -398,11 +421,12 @@ void QolPage::runJob(const QString &title,
         };
         QString error;
         const bool ok = job(error, report);
-        QMetaObject::invokeMethod(qApp, [self, guard, ok, error, title]() {
+        QMetaObject::invokeMethod(qApp, [self, guard, ok, error, title, finished]() {
             if (guard)
                 guard->close();
             if (!self)
                 return;
+            if (finished) finished(ok);
             if (!ok)
                 QMessageBox::warning(self, title, error.isEmpty() ? tr("The install failed.") : error);
             self->refresh();

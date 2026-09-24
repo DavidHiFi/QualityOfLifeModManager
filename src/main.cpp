@@ -174,13 +174,31 @@ int main(int argc, char *argv[])
                                 "account) instead of LAN."});
     parser.addOption({"selftest", "Offline checks against -plutoniumdir (ReShade install/remove, watchdog unpack, "
                                   "online handler probe); prints one line per check and exits non-zero on failure."});
+    parser.addOption({"testdlss", "With -selftest: download the published DLSS 5 payload and check LAN, online, and removal in a scratch root."});
     parser.addOption({"installcheck", "Check the installed Qt, MinGW, TLS and Windows graphics runtimes, then exit."});
     parser.addOption({"checkupdates", "Print what each component resolves to and what is pending, then exit. "
                                       "Shows whether a version came from the feed or from the component's own repo."});
+    parser.addOption({"checkdlss", "Print the published DLSS 5 payload version and this PC's installed version."});
     parser.process(app);
 
     if (parser.isSet("installcheck"))
         return runInstallCheck();
+
+    if (parser.isSet("checkdlss")) {
+        AppSettings settings = AppSettings::loadForStartup();
+        if (parser.isSet("plutoniumdir"))
+            settings.plutoniumInstance = AppSettings::resolvePath(parser.value("plutoniumdir"));
+        QolService::DlssRelease release;
+        QString error;
+        if (!QolService::latestDlssRelease(release, error)) {
+            QTextStream(stdout) << "DLSS 5 release lookup failed: " << error << Qt::endl;
+            return 1;
+        }
+        QTextStream(stdout) << "DLSS 5 latest " << release.version
+                            << ", installed " << QolService::installedDlssVersion(settings)
+                            << ", asset " << release.size << " bytes" << Qt::endl;
+        return 0;
+    }
 
     if (parser.isSet("checkupdates")) {
         AppSettings settings = AppSettings::loadForStartup();
@@ -297,7 +315,31 @@ int main(int argc, char *argv[])
             // An unticked box asks for gone, not for "the other build".
             check("reshade absent on request", QolService::ensureReShadeAbsent(rs, e), e);
             check("reshade really gone", !QolService::reShadeInstalled(rs));
-            check("dlss payload absent without an import", !QolService::dlssPayloadReady(rs));
+            check("dlss payload absent before install", !QolService::dlssPayloadReady(rs));
+            if (parser.isSet("testdlss")) {
+                QolService::DlssRelease release;
+                e.clear();
+                const bool found = QolService::latestDlssRelease(release, e);
+                check("dlss release found", found, e);
+                if (found) {
+                    e.clear();
+                    check("dlss managed install", QolService::installDlssPayload(rs, release, {}, e), e);
+                    check("dlss installed version", QolService::installedDlssVersion(rs) == release.version);
+                    check("dlss payload complete", QolService::dlssPayloadReady(rs));
+                    e.clear();
+                    check("dlss lan applied", QolService::applyReShadeMode(rs, QolService::ReShadeMode::Lan, true, e), e);
+                    check("dlss add-on in lan bin", QFileInfo::exists(QDir(rs.plutoniumInstance).filePath(QStringLiteral("bin/dlss5-feed.addon32"))));
+                    e.clear();
+                    check("dlss unsafe online before switch", !QolService::onlineReShadeSafe(rs, e));
+                    e.clear();
+                    check("dlss online switch", QolService::applyReShadeMode(rs, QolService::ReShadeMode::Online, false, e), e);
+                    check("dlss clean online bin", QolService::onlineReShadeSafe(rs, e), e);
+                    check("dlss kept for next lan", QolService::dlssPayloadReady(rs));
+                    e.clear();
+                    check("dlss one-click removal", QolService::removeDlssPayload(rs, e), e);
+                    check("dlss removed", !QolService::dlssPayloadReady(rs));
+                }
+            }
         }
         const qint64 wd = GameLauncher::startReShadeWatchdog(rs.plutoniumInstance, err);
         check("watchdog started", wd > 0, err);

@@ -71,15 +71,25 @@ namespace QolService
     //  pressed. applyReShadeMode is the only thing that writes it.
     // ---------------------------------------------------------------------
     enum class ReShadeMode { Online, Lan };
+    struct DlssRelease {
+        QString version;
+        QString url;
+        QString sha256;
+        qint64 size = 0;
+        bool isValid() const { return !version.isEmpty() && !url.isEmpty() && sha256.size() == 64 && size > 0; }
+    };
     ReShadeMode activeReShadeMode(const AppSettings &s);
     // True when the add-on build is the one currently in bin.
     bool addonReShadeActive(const AppSettings &s);
-    // The DLSS 5 payload (feeder add-on, host64\, DLSS5_Feed.fx) is on this PC
-    // and complete. It is 237 MB of NVIDIA runtimes, so it is never shipped in
-    // the exe - importDlssPayload brings it in from a folder that has it.
+    // The payload is downloaded from a separate, versioned GitHub release.
+    // Only a verified archive can replace the installed copy.
     bool dlssPayloadReady(const AppSettings &s);
     QString dlssPayloadSummary(const AppSettings &s);
-    bool importDlssPayload(const AppSettings &s, const QString &donorDir, QString &error);
+    QString installedDlssVersion(const AppSettings &s);
+    bool latestDlssRelease(DlssRelease &release, QString &error);
+    bool installDlssPayload(const AppSettings &s, const DlssRelease &release, const Progress &p, QString &error);
+    bool removeDlssPayload(const AppSettings &s, QString &error);
+    bool onlineReShadeSafe(const AppSettings &s, QString &error);
     // Puts the right build, add-ons, shader and preset entries in bin. `dlss`
     // asks for the DLSS 5 payload on top, and is ignored unless mode is Lan.
     bool applyReShadeMode(const AppSettings &s, ReShadeMode mode, bool dlss, QString &error);

@@ -835,11 +835,14 @@ bool copyIfDifferent(const QString &from, const QString &to, QString &error)
     const QFileInfo src(from);
     const QFileInfo dst(to);
     if (dst.exists() && dst.size() == src.size()) {
-        if (src.size() >= kCompareContentsUnder)
-            return true;
-        QFile a(from), b(to);
-        if (a.open(QIODevice::ReadOnly) && b.open(QIODevice::ReadOnly) && a.readAll() == b.readAll())
-            return true;
+        if (src.size() >= kCompareContentsUnder) {
+            if (sha256Of(from) == sha256Of(to))
+                return true;
+        } else {
+            QFile a(from), b(to);
+            if (a.open(QIODevice::ReadOnly) && b.open(QIODevice::ReadOnly) && a.readAll() == b.readAll())
+                return true;
+        }
     }
     QDir().mkpath(dst.absolutePath());
     if (dst.exists() && !QFile::remove(to)) {
@@ -1075,15 +1078,16 @@ bool dlssPayloadReady(const AppSettings &s)
         if (!fi.exists() || fi.size() == 0)
             return false;
     }
-    // Exactly one neural consumer, or the host's NGX calls go nowhere.
+    // The helper must have exactly the consumer this route configures.
     const QDir host(QDir(lan).filePath(kHostDir));
-    return !host.entryList({QStringLiteral("*.addon64")}, QDir::Files).isEmpty();
+    return host.entryList({QStringLiteral("*.addon64")}, QDir::Files)
+               == QStringList{QStringLiteral("renodx-dlss5.addon64")};
 }
 
 QString dlssPayloadSummary(const AppSettings &s)
 {
     if (!dlssPayloadReady(s))
-        return QObject::tr("Not imported yet.");
+        return QObject::tr("Not installed yet.");
     qint64 bytes = 0;
     QDirIterator it(reShadeLanVault(s), QDir::Files, QDirIterator::Subdirectories);
     int files = 0;
@@ -1092,61 +1096,182 @@ QString dlssPayloadSummary(const AppSettings &s)
         bytes += it.fileInfo().size();
         ++files;
     }
-    return QObject::tr("%1 files, %2 MB.").arg(files).arg(bytes / 1000000);
+    return QObject::tr("%1, %2 files, %3 MB.")
+        .arg(installedDlssVersion(s).isEmpty() ? QObject::tr("legacy payload") : installedDlssVersion(s))
+        .arg(files).arg(bytes / 1000000);
 }
 
-bool importDlssPayload(const AppSettings &s, const QString &donorDir, QString &error)
+QString installedDlssVersion(const AppSettings &s)
 {
-    // What a working DLSS5-Feeder install looks like, and where each piece
-    // goes in the payload. The kernel is taken from the donor too: the feeder
-    // reads motion vectors from that exact build, and it lands on the same
-    // relative path as the shader pack's own copy so bin never ends up with
-    // two files of one name - two files mean two techniques and the effect
-    // runs twice.
-    static const QList<QPair<QString, QString>> map = {
-        {QStringLiteral("dlss5-feed.addon32"), QStringLiteral("dlss5-feed.addon32")},
-        {QStringLiteral("dlss5-feed.cfg"), QStringLiteral("dlss5-feed.cfg")},
-        {QStringLiteral("reshade-shaders/Shaders/DLSS5_Feed.fx"),
-         QStringLiteral("reshade-shaders/Shaders/DLSS5_Feed.fx")},
-        {QStringLiteral("reshade-shaders/Shaders/lumenite_Kernel.fx"),
-         QStringLiteral("reshade-shaders/Shaders/LumeniteFX/lumenite_Kernel.fx")},
-        {QStringLiteral("host64/dlss5-feed-host64.exe"), QStringLiteral("host64/dlss5-feed-host64.exe")},
-        {QStringLiteral("host64/dxgi.dll"), QStringLiteral("host64/dxgi.dll")},
-        {QStringLiteral("host64/nvngx_dlss.dll"), QStringLiteral("host64/nvngx_dlss.dll")},
-        {QStringLiteral("host64/nvngx_dlssnr.dll"), QStringLiteral("host64/nvngx_dlssnr.dll")},
-        {QStringLiteral("host64/ReShade.ini"), QStringLiteral("host64/ReShade.ini")},
-    };
-    const QDir donor(donorDir);
-    QStringList missing;
-    for (const auto &pair : map)
-        if (!QFileInfo::exists(donor.filePath(pair.first)))
-            missing << pair.first;
-    if (!missing.isEmpty()) {
-        error = QObject::tr("%1 is not a DLSS 5 install: %2 missing.")
-                    .arg(QDir::toNativeSeparators(donorDir), missing.join(QStringLiteral(", ")));
+    QFile f(QDir(reShadeLanVault(s)).filePath(QStringLiteral("payload.json")));
+    if (!f.open(QIODevice::ReadOnly)) return {};
+    return QJsonDocument::fromJson(f.readAll()).object().value(QStringLiteral("version")).toString();
+}
+
+bool latestDlssRelease(DlssRelease &release, QString &error)
+{
+    const QByteArray raw = Downloader::downloadBytes(QStringLiteral(QOL_DLSS_RELEASE_URL), error, 30000);
+    if (raw.isEmpty()) return false;
+    const QJsonObject o = QJsonDocument::fromJson(raw).object();
+    release.version = o.value(QStringLiteral("version")).toString();
+    release.url = o.value(QStringLiteral("url")).toString();
+    release.sha256 = o.value(QStringLiteral("sha256")).toString().toLower();
+    release.size = static_cast<qint64>(o.value(QStringLiteral("size")).toDouble());
+    static const QRegularExpression hash(QStringLiteral("^[0-9a-f]{64}$"));
+    const QString prefix = QStringLiteral("https://github.com/DavidHiFi/QualityOfLifeModManager/"
+                                          "releases/download/dlss5-stable/");
+    if (!release.isValid() || !hash.match(release.sha256).hasMatch()
+        || !release.url.startsWith(prefix) || release.url.contains(QLatin1Char('?'))) {
+        error = QObject::tr("The published DLSS 5 release manifest is invalid.");
         return false;
     }
-    const QString lan = reShadeLanVault(s);
-    QDir().mkpath(lan);
-    for (const auto &pair : map)
-        if (!copyIfDifferent(donor.filePath(pair.first), QDir(lan).filePath(pair.second), error))
-            return false;
-    // The neural consumer: whichever one the donor uses, and only one.
-    const QStringList consumers = QDir(donor.filePath(kHostDir))
-                                      .entryList({QStringLiteral("*.addon64")}, QDir::Files);
-    for (const QString &c : consumers) {
-        // dlss5-feed.addon64 is the add-on for a 64-bit GAME. In host64\ the
-        // helper's own ReShade loads it into the helper, where it does nothing
-        // and crowds out the consumer.
-        if (c.compare(QStringLiteral("dlss5-feed.addon64"), Qt::CaseInsensitive) == 0)
-            continue;
-        if (!copyIfDifferent(QDir(donor.filePath(kHostDir)).filePath(c),
-                             QDir(QDir(lan).filePath(kHostDir)).filePath(c), error))
-            return false;
+    return true;
+}
+
+namespace {
+bool verifyDlssTree(const QString &root, const QString &version, QString &error)
+{
+    QFile f(QDir(root).filePath(QStringLiteral("payload.json")));
+    if (!f.open(QIODevice::ReadOnly)) {
+        error = QObject::tr("The DLSS 5 archive has no file manifest.");
+        return false;
     }
-    if (!dlssPayloadReady(s)) {
-        error = QObject::tr("The DLSS 5 payload is still incomplete after importing from %1.")
-                    .arg(QDir::toNativeSeparators(donorDir));
+    const QJsonObject manifest = QJsonDocument::fromJson(f.readAll()).object();
+    const QJsonObject files = manifest.value(QStringLiteral("files")).toObject();
+    if (manifest.value(QStringLiteral("version")).toString() != version || files.isEmpty()) {
+        error = QObject::tr("The DLSS 5 archive version or file list does not match its release.");
+        return false;
+    }
+    static const QStringList required = {
+        QStringLiteral("dlss5-feed.addon32"), QStringLiteral("dlss5-feed.cfg"),
+        QStringLiteral("reshade-shaders/Shaders/DLSS5_Feed.fx"),
+        QStringLiteral("reshade-shaders/Shaders/LumeniteFX/lumenite_Kernel.fx"),
+        QStringLiteral("host64/dlss5-feed-host64.exe"), QStringLiteral("host64/dxgi.dll"),
+        QStringLiteral("host64/renodx-dlss5.addon64"),
+        QStringLiteral("host64/nvngx_dlss.dll"), QStringLiteral("host64/nvngx_dlssnr.dll"),
+        QStringLiteral("host64/ReShade.ini")};
+    for (const QString &name : required)
+        if (!files.contains(name)) {
+            error = QObject::tr("The DLSS 5 archive is missing %1.").arg(name);
+            return false;
+        }
+    for (auto it = files.begin(); it != files.end(); ++it) {
+        const QString name = it.key();
+        const QString clean = QDir::cleanPath(name);
+        if (clean != name || clean.startsWith(QLatin1String("../")) || QDir::isAbsolutePath(name)
+            || name.contains(QLatin1Char('\\')) || name.contains(QLatin1Char(':'))) {
+            error = QObject::tr("The DLSS 5 archive contains an unsafe path.");
+            return false;
+        }
+        const QFileInfo info(QDir(root).filePath(name));
+        const QJsonObject item = it.value().toObject();
+        const QString digest = item.value(QStringLiteral("sha256")).toString().toLower();
+        const qint64 size = static_cast<qint64>(item.value(QStringLiteral("size")).toDouble());
+        if (!info.isFile() || info.isSymLink() || size <= 0 || info.size() != size
+            || digest.size() != 64 || sha256Of(info.filePath()) != digest) {
+            error = QObject::tr("The DLSS 5 archive failed verification at %1.").arg(name);
+            return false;
+        }
+    }
+    QDirIterator all(root, QDir::Files, QDirIterator::Subdirectories);
+    while (all.hasNext()) {
+        const QString name = QDir(root).relativeFilePath(all.next()).replace(QLatin1Char('\\'), QLatin1Char('/'));
+        if (name != QLatin1String("payload.json") && !files.contains(name)) {
+            error = QObject::tr("The DLSS 5 archive contains an unexpected file: %1.").arg(name);
+            return false;
+        }
+    }
+    return true;
+}
+} // namespace
+
+bool installDlssPayload(const AppSettings &s, const DlssRelease &release, const Progress &p, QString &error)
+{
+    if (!release.isValid()) { error = QObject::tr("The DLSS 5 release is invalid."); return false; }
+    if (const QString g = runningGame(); !g.isEmpty()) {
+        error = QObject::tr("Close Plutonium first (%1 is running).").arg(g);
+        return false;
+    }
+    GameLauncher::stopReShadeWatchdog();
+    Asset asset{release.url, QStringLiteral("dlss5-payload.zip"), release.version, release.sha256, release.size};
+    QString unpacked;
+    if (!downloadAndUnpack(asset, QStringLiteral("dlss5"), p, unpacked, error)) return false;
+    const QString root = packRoot(unpacked, QString());
+    if (p) p(QObject::tr("Checking every DLSS 5 file..."), 82);
+    if (!verifyDlssTree(root, release.version, error)) return false;
+
+    const QString state = stateDir(s);
+    QDir().mkpath(state);
+    const QString stage = QDir(state).filePath(QStringLiteral("reshade-lan-stage"));
+    const QString previous = QDir(state).filePath(QStringLiteral("reshade-lan-previous"));
+    if (QDir(stage).exists()) QDir(stage).removeRecursively();
+    if (QDir(previous).exists()) {
+        error = QObject::tr("A previous DLSS 5 update needs recovery at %1.").arg(previous);
+        return false;
+    }
+    QStringList written;
+    if (!copyTree(root, stage, {}, written, error)
+        || !writeResource(QStringLiteral(":/reshade/dxgi_addon.dll"),
+                          QDir(stage).filePath(QStringLiteral("dxgi.dll")), error)) {
+        QDir(stage).removeRecursively();
+        return false;
+    }
+    if (p) p(QObject::tr("Installing the verified payload..."), 94);
+    if (!applyReShadeMode(s, ReShadeMode::Online, false, error)) {
+        QDir(stage).removeRecursively();
+        return false;
+    }
+    const QString current = reShadeLanVault(s);
+    const bool hadCurrent = QDir(current).exists();
+    if (hadCurrent && !QDir().rename(current, previous)) {
+        error = QObject::tr("Could not set aside the current DLSS 5 payload.");
+        QDir(stage).removeRecursively();
+        return false;
+    }
+    if (!QDir().rename(stage, current)) {
+        if (hadCurrent) QDir().rename(previous, current);
+        error = QObject::tr("Could not activate the new DLSS 5 payload. The old one was kept.");
+        return false;
+    }
+    if (hadCurrent) QDir(previous).removeRecursively();
+    if (p) p(QObject::tr("DLSS 5 is ready for LAN play."), 100);
+    return true;
+}
+
+bool removeDlssPayload(const AppSettings &s, QString &error)
+{
+    if (const QString g = runningGame(); !g.isEmpty()) {
+        error = QObject::tr("Close Plutonium first (%1 is running).").arg(g);
+        return false;
+    }
+    GameLauncher::stopReShadeWatchdog();
+    if (reShadeInstalled(s)) {
+        if (!applyReShadeMode(s, ReShadeMode::Online, false, error)) return false;
+    } else if (!ensureReShadeAbsent(s, error)) {
+        return false;
+    }
+    const QString vault = reShadeLanVault(s);
+    if (QDir(vault).exists() && !QDir(vault).removeRecursively()) {
+        error = QObject::tr("Could not remove the DLSS 5 payload from %1.").arg(vault);
+        return false;
+    }
+    return onlineReShadeSafe(s, error);
+}
+
+bool onlineReShadeSafe(const AppSettings &s, QString &error)
+{
+    const QString bin = QDir(s.plutoniumInstance).filePath(QStringLiteral("bin"));
+    if (addonReShadeActive(s)) {
+        error = QObject::tr("The LAN ReShade runtime is still in Plutonium's bin folder.");
+        return false;
+    }
+    for (const QString &rel : kLanOnlyFiles)
+        if (QFileInfo::exists(QDir(bin).filePath(rel))) {
+            error = QObject::tr("DLSS 5 is still present in Plutonium's bin folder: %1.").arg(rel);
+            return false;
+        }
+    if (QDir(QDir(bin).filePath(kHostDir)).exists() || QFileInfo::exists(QDir(bin).filePath(kLanPresetName))) {
+        error = QObject::tr("The DLSS 5 helper or preset is still in Plutonium's bin folder.");
         return false;
     }
     return true;
@@ -1172,6 +1297,10 @@ bool applyReShadeMode(const AppSettings &s, ReShadeMode mode, bool dlss, QString
 
     const bool lan = mode == ReShadeMode::Lan;
     const bool withDlss = lan && dlss && dlssPayloadReady(s);
+    if (lan && dlss && !withDlss) {
+        error = QObject::tr("Install DLSS 5 from the Quality of Life page before starting LAN play.");
+        return false;
+    }
 
     const QString runtime = lan ? QStringLiteral(":/reshade/dxgi_addon.dll")
                                 : QStringLiteral(":/reshade/dxgi.dll");
@@ -1199,9 +1328,18 @@ bool applyReShadeMode(const AppSettings &s, ReShadeMode mode, bool dlss, QString
                 return false;
         }
     } else {
-        for (const QString &rel : kLanOnlyFiles)
-            QFile::remove(QDir(bin).filePath(rel));
-        QDir(QDir(bin).filePath(kHostDir)).removeRecursively();
+        for (const QString &rel : kLanOnlyFiles) {
+            const QString path = QDir(bin).filePath(rel);
+            if (QFileInfo::exists(path) && !QFile::remove(path)) {
+                error = QObject::tr("Could not remove %1 before launch.").arg(path);
+                return false;
+            }
+        }
+        const QString host = QDir(bin).filePath(kHostDir);
+        if (QDir(host).exists() && !QDir(host).removeRecursively()) {
+            error = QObject::tr("Could not remove the DLSS 5 helper before launch.");
+            return false;
+        }
         parkLanPresets(bin, reShadeLanVault(s));
         // Put the shader pack's own kernel back over the feeder's build.
         const QString kernel = QStringLiteral("reshade-shaders/Shaders/LumeniteFX/lumenite_Kernel.fx");
@@ -1318,9 +1456,10 @@ bool applyReShadeMode(const AppSettings &s, ReShadeMode mode, bool dlss, QString
     // about 28 ms of CPU stall per frame on top of the neural pass. The panel
     // is for changing settings, not for playing behind, so it starts hidden
     // and F10 brings it up.
-    setFeederKeys(bin, {{QStringLiteral("enabled"), withDlss ? QStringLiteral("1") : QStringLiteral("0")},
-                        {QStringLiteral("host_window"), QStringLiteral("0")},
-                        {QStringLiteral("cast_key"), QStringLiteral("121")}});
+    if (withDlss)
+        setFeederKeys(bin, {{QStringLiteral("enabled"), QStringLiteral("1")},
+                            {QStringLiteral("host_window"), QStringLiteral("0")},
+                            {QStringLiteral("cast_key"), QStringLiteral("121")}});
 
     // Three states, not two. The watchdog restores whatever Plutonium clears
     // out of bin, and the LAN vault holds both the add-on runtime (wanted by
@@ -1331,12 +1470,7 @@ bool applyReShadeMode(const AppSettings &s, ReShadeMode mode, bool dlss, QString
     if (marker.open(QIODevice::WriteOnly | QIODevice::Truncate))
         marker.write(withDlss ? "lan-dlss" : (lan ? "lan" : "online"));
 
-    if (lan && dlss && !withDlss) {
-        error = QObject::tr("The add-on build of ReShade is in place, but the DLSS 5 payload "
-                            "has not been imported yet - see the Quality of Life page.");
-        return false;   // the add-on build is installed; only DLSS is missing
-    }
-    return true;
+    return lan || onlineReShadeSafe(s, error);
 }
 
 bool ensureReShadeAbsent(const AppSettings &s, QString &error)

@@ -143,8 +143,16 @@ int runNoGui(AppSettings &settings, const QCommandLineParser &parser)
                                             ? GameLauncher::launchOnline(settings)
                                             : GameLauncher::launch(settings, QString());
     if (result.hasError) {
+        // Nothing started, so nothing may keep the LAN files in bin.
+        if (!online && (parser.isSet("reshade") || parser.isSet("dlss"))) {
+            GameLauncher::stopReShadeWatchdog();
+            QString ignored;
+            QolService::leaveLanState(settings, ignored);
+        }
         if (!result.errorText.isEmpty())
             out << QOL_APP_NAME ": " << result.errorText << Qt::endl;
+        else if (result.errorMsg == Dialogs::Msg::Username)
+            out << QOL_APP_NAME ": no in-game name is set; pass -name <name>." << Qt::endl;
         else
             out << QOL_APP_NAME ": launch failed (check " QOL_INI_NAME " and the arguments)." << Qt::endl;
         if (result.needsLogin)
@@ -190,6 +198,8 @@ int main(int argc, char *argv[])
                                   "online handler probe); prints one line per check and exits non-zero on failure."});
     parser.addOption({"testdlss", "With -selftest: install the published DLSS 5 payload into a scratch Plutonium "
                                   "root and check LAN, online, end of session, update and removal."});
+    parser.addOption({"leavelan", "Take the LAN-only ReShade build and DLSS 5 back out of bin, as the app does when a "
+                                  "LAN game closes. Uses -plutoniumdir when given."});
     parser.addOption({"reshade", "With -nogui on LAN: put the add-on build of ReShade in place and start its watchdog."});
     parser.addOption({"dlss", "With -nogui on LAN for T6: as -reshade, plus DLSS 5 (it must be installed)."});
     parser.addOption({"installcheck", "Check the installed Qt, MinGW, TLS and Windows graphics runtimes, then exit."});
@@ -223,6 +233,18 @@ int main(int argc, char *argv[])
                             << ", mode " << (QolService::activeReShadeMode(settings) == QolService::ReShadeMode::Lan
                                                  ? "lan" : "online") << Qt::endl;
         return 0;
+    }
+
+    if (parser.isSet("leavelan")) {
+        AppSettings settings = AppSettings::loadForStartup();
+        if (parser.isSet("plutoniumdir"))
+            settings.plutoniumInstance = AppSettings::resolvePath(parser.value("plutoniumdir"));
+        GameLauncher::stopReShadeWatchdog();
+        QString error;
+        const bool ok = QolService::leaveLanState(settings, error) && QolService::onlineReShadeSafe(settings, error);
+        QTextStream(stdout) << (ok ? QStringLiteral("bin is back to its online state.")
+                                   : QStringLiteral("bin is not clean: ") + error) << Qt::endl;
+        return ok ? 0 : 1;
     }
 
     if (parser.isSet("installdlss")) {
@@ -380,7 +402,7 @@ int main(int argc, char *argv[])
                     check("dlss lan applied", QolService::applyReShadeMode(rs, QolService::ReShadeMode::Lan, true, e), e);
                     check("dlss lan is the add-on build", QolService::addonReShadeActive(rs));
                     check("dlss add-on in lan bin", inBin("dlss5-feed.addon32"));
-                    check("dlss helper in lan bin", inBin("host64/dlss5-feed-host64.exe") && inBin("host64/nvngx_dlssnr.dll")
+                    check("dlss helper in lan bin", inBin("host64/dlss5-feed-host64.exe") && inBin("host64/d3d12.dll") && !inBin("host64/dxgi.dll") && inBin("host64/nvngx_dlssnr.dll")
                                                     && inBin("host64/nvngx_dlss.dll") && inBin("host64/vcruntime140_1.dll"));
                     // Everything the two shaders include, on a PC with no pack.
                     check("dlss shaders compile on a clean pc",

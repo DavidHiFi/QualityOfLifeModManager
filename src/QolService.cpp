@@ -760,7 +760,7 @@ const QStringList kDlssRequired = {
     QStringLiteral("reshade-shaders/Shaders/DLSS5_Feed.fx"),
     QStringLiteral("reshade-shaders/Shaders/ReShade.fxh"),
     QStringLiteral("reshade-shaders/Shaders/LumeniteFX/lumenite_Kernel.fx"),
-    QStringLiteral("host64/dlss5-feed-host64.exe"), QStringLiteral("host64/dxgi.dll"),
+    QStringLiteral("host64/dlss5-feed-host64.exe"), QStringLiteral("host64/d3d12.dll"),
     QStringLiteral("host64/renodx-dlss5.addon64"),
     QStringLiteral("host64/nvngx_dlss.dll"), QStringLiteral("host64/nvngx_dlssnr.dll"),
     QStringLiteral("host64/ReShade.ini")};

@@ -18,8 +18,10 @@ What goes in, and where it comes from:
                             from the verified local install and pinned by hash.
   renodx-dlss5.addon64      the neural consumer DLSS 5 Swapper ships (MIT), pinned
                             by hash; not published as a release anywhere.
-  host64\\dxgi.dll           ReShade 6.8.0 64-bit with full add-on support
-                            (BSD-3), for the helper, pinned by hash.
+  host64\\d3d12.dll          ReShade 6.8.0 64-bit with full add-on support
+                            (BSD-3), for the helper, pinned by hash. Named
+                            d3d12.dll so a tool that preloads Windows' own
+                            dxgi.dll into every process cannot shadow it.
   msvcp140 / vcruntime140   Microsoft's x64 VC++ redistributable. The helper
                             imports them and a PC that never installed a 64-bit
                             VC++ runtime cannot start it. Microsoft allows these
@@ -92,7 +94,13 @@ FROM_DONOR = {
         "8270b350cd82de5ce89806872cdd6b6a9249b80836b91bbeb3573470744cc206"),
     "host64/renodx-dlss5.addon64": ("host64/renodx-dlss5.addon64",
         "d5adf82eb44b065f4c590ac91fe824bab07afea0eb9f994bde936710c8593952"),
-    "host64/dxgi.dll": ("host64/dxgi.dll",
+    # Shipped as d3d12.dll, not dxgi.dll. The helper does LoadLibrary("dxgi.dll")
+    # and then LoadLibrary("d3d12.dll"). Anything that has already pulled Windows'
+    # own dxgi.dll into every process wins the first call. A Windhawk UI mod
+    # scoped to "*" does this, so ReShade never loaded, the consumer never
+    # attached and DLSS delivered nothing. Nothing loads d3d12.dll that early,
+    # and ReShade under that name still hooks DXGI and D3D12.
+    "host64/d3d12.dll": ("host64/dxgi.dll",
         "0cee63f9c9f13f3ac909c5b4903f4dbb4b719a7ab3b4f13b0deaf83c814b94f7"),
 }
 
@@ -149,7 +157,7 @@ bin folder only for LAN launches of Black Ops II. Online launches remove it.
   host64\\dlss5-feed-host64.exe        https://github.com/jlrouzies-fr/DLSS5-Feeder (MIT)
   host64\\renodx-dlss5.addon64         RenoDX DLSS 5 consumer by Carlos Lopez Jr.
                                        https://github.com/clshortfuse/renodx (MIT)
-  host64\\dxgi.dll                     ReShade 6.8.0 by Patrick Mours, https://reshade.me (BSD-3-Clause)
+  host64\\d3d12.dll                    ReShade 6.8.0 by Patrick Mours, https://reshade.me (BSD-3-Clause)
   reshade-shaders\\Shaders\\ReShade*.fxh  crosire/reshade-shaders (CC0)
   host64\\nvngx_dlssnr.dll             NVIDIA neural rendering runtime, (c) NVIDIA
                                        Corporation, under the NVIDIA RTX SDKs licence

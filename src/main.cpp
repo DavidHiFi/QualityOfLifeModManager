@@ -17,6 +17,8 @@
 #include <QFileInfo>
 #include <QLibrary>
 #include <QOperatingSystemVersion>
+#include <QScrollArea>
+#include <QScrollBar>
 #include <QSslSocket>
 #include <QSysInfo>
 #include <QTextStream>
@@ -528,6 +530,12 @@ int main(int argc, char *argv[])
                 window.debugShowPage(pageIndex);
         });
         QTimer::singleShot(qMax(400, qEnvironmentVariableIntValue("QOL_SHOT_DELAY")), &window, [&window, screenshotPath]() {
+            // QOL_SCROLL=<px>: scroll every visible page to that offset first,
+            // for rows below the fold.
+            if (qEnvironmentVariableIsSet("QOL_SCROLL"))
+                for (QScrollArea *area : window.findChildren<QScrollArea *>())
+                    if (area->isVisible())
+                        area->verticalScrollBar()->setValue(qEnvironmentVariableIntValue("QOL_SCROLL"));
             window.grab().save(screenshotPath);
             QApplication::quit();
         });

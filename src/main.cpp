@@ -127,6 +127,18 @@ int runNoGui(AppSettings &settings, const QCommandLineParser &parser)
 
     QTextStream out(stdout);
     const bool online = parser.isSet("online");
+    // -reshade / -dlss: the same preparation the Play button does for LAN.
+    // Online needs neither flag: launchOnline makes bin safe on its own.
+    if (!online && (parser.isSet("reshade") || parser.isSet("dlss"))) {
+        settings.launchReShade = true;
+        QString error;
+        const bool dlss = parser.isSet("dlss") && gameId == QLatin1String("T6");
+        if (!QolService::applyReShadeMode(settings, QolService::ReShadeMode::Lan, dlss, error)
+            || GameLauncher::startReShadeWatchdog(settings.plutoniumInstance, error) <= 0) {
+            out << QOL_APP_NAME ": " << error << Qt::endl;
+            return 1;
+        }
+    }
     const GameLauncher::Result result = online
                                             ? GameLauncher::launchOnline(settings)
                                             : GameLauncher::launch(settings, QString());
@@ -178,10 +190,14 @@ int main(int argc, char *argv[])
                                   "online handler probe); prints one line per check and exits non-zero on failure."});
     parser.addOption({"testdlss", "With -selftest: install the published DLSS 5 payload into a scratch Plutonium "
                                   "root and check LAN, online, end of session, update and removal."});
+    parser.addOption({"reshade", "With -nogui on LAN: put the add-on build of ReShade in place and start its watchdog."});
+    parser.addOption({"dlss", "With -nogui on LAN for T6: as -reshade, plus DLSS 5 (it must be installed)."});
     parser.addOption({"installcheck", "Check the installed Qt, MinGW, TLS and Windows graphics runtimes, then exit."});
     parser.addOption({"checkupdates", "Print what each component resolves to and what is pending, then exit. "
                                       "Shows whether a version came from the feed or from the component's own repo."});
     parser.addOption({"checkdlss", "Print the published DLSS 5 payload version and this PC's installed version."});
+    parser.addOption({"installdlss", "Install or update DLSS 5 from the published release, without the GUI. "
+                                     "Uses -plutoniumdir when given."});
     parser.process(app);
 
     if (parser.isSet("installcheck"))
@@ -197,10 +213,32 @@ int main(int argc, char *argv[])
             QTextStream(stdout) << "DLSS 5 release lookup failed: " << error << Qt::endl;
             return 1;
         }
+        QString unsafe;
+        const bool safe = QolService::onlineReShadeSafe(settings, unsafe);
         QTextStream(stdout) << "DLSS 5 latest " << release.version
                             << ", installed " << QolService::installedDlssVersion(settings)
-                            << ", asset " << release.size << " bytes" << Qt::endl;
+                            << ", asset " << release.size << " bytes" << Qt::endl
+                            << "bin is " << (safe ? QStringLiteral("safe for online play")
+                                                  : QStringLiteral("NOT safe for online play: ") + unsafe)
+                            << ", mode " << (QolService::activeReShadeMode(settings) == QolService::ReShadeMode::Lan
+                                                 ? "lan" : "online") << Qt::endl;
         return 0;
+    }
+
+    if (parser.isSet("installdlss")) {
+        AppSettings settings = AppSettings::loadForStartup();
+        if (parser.isSet("plutoniumdir"))
+            settings.plutoniumInstance = AppSettings::resolvePath(parser.value("plutoniumdir"));
+        QTextStream out(stdout);
+        QolService::DlssRelease release;
+        QString error;
+        const bool ok = QolService::latestDlssRelease(release, error)
+                        && QolService::installDlssPayload(settings, release, [&out](const QString &t, int pct) {
+                               out << pct << "% " << t << Qt::endl;
+                           }, error);
+        out << (ok ? QStringLiteral("DLSS 5 %1 installed.").arg(release.version)
+                   : QStringLiteral("DLSS 5 install failed: %1").arg(error)) << Qt::endl;
+        return ok ? 0 : 1;
     }
 
     if (parser.isSet("checkupdates")) {

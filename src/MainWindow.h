@@ -45,7 +45,7 @@ private:
     bool prepareReShade(QolService::ReShadeMode mode, bool wantDlss);
     bool startReShadeWatchdogIfWanted();
     // A game this app started has closed: take LAN-only files back out of bin.
-    void afterSessionEnded();
+    void afterSessionEnded(int attempt = 0);
 
     QWidget *buildSidebar();
     QWidget *buildHeader();

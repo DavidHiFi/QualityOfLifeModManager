@@ -41,8 +41,6 @@
 #include <QDir>
 #include <QResizeEvent>
 #include <QTimer>
-#include <functional>
-#include <memory>
 #include <QtConcurrent/QtConcurrent>
 
 namespace {
@@ -669,21 +667,19 @@ bool MainWindow::prepareReShade(QolService::ReShadeMode mode, bool wantDlss)
 // game by a few seconds and holds host64\ open meanwhile, so this retries
 // until it has gone. A game still running (a second copy the user started)
 // leaves bin as it is; the next launch from here makes it right either way.
-void MainWindow::afterSessionEnded()
+void MainWindow::afterSessionEnded(int attempt)
 {
-    if (QolService::activeReShadeMode(m_settings) != QolService::ReShadeMode::Lan)
+    if (attempt == 0) {
+        if (QolService::activeReShadeMode(m_settings) == QolService::ReShadeMode::Lan)
+            QTimer::singleShot(1500, this, [this]() { afterSessionEnded(1); });
         return;
-    auto attempts = std::make_shared<int>(0);
-    auto tryNow = std::make_shared<std::function<void()>>();
-    *tryNow = [this, attempts, tryNow]() {
-        if (m_runningPid > 0)
-            return;                  // a new session started meanwhile; it owns bin now
-        QString err;
-        if (QolService::leaveLanState(m_settings, err) || ++*attempts >= 15)
-            return;
-        QTimer::singleShot(2000, this, *tryNow);
-    };
-    QTimer::singleShot(1500, this, *tryNow);
+    }
+    if (m_runningPid > 0)
+        return;                      // a new session started meanwhile; it owns bin now
+    QString err;
+    if (QolService::leaveLanState(m_settings, err) || attempt >= 15)
+        return;
+    QTimer::singleShot(2000, this, [this, attempt]() { afterSessionEnded(attempt + 1); });
 }
 
 bool MainWindow::startReShadeWatchdogIfWanted()
@@ -735,6 +731,7 @@ void MainWindow::onLaunchGame(const QString &gameId, const QString &mode)
     const GameLauncher::Result result = GameLauncher::launch(m_settings, m_modsPage->selectedMod());
     if (result.hasError) {
         GameLauncher::stopReShadeWatchdog();
+        afterSessionEnded();         // nothing started, so nothing may keep the LAN files
         if (!result.errorText.isEmpty())
             Dialogs::error(this, result.errorText);
         else

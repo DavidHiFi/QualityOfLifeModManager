@@ -28,6 +28,7 @@ One window for the whole [Quality of Life series](https://github.com/DavidHiFi/P
 * **Mods.** Drop a `.zip`, `.rar`, `.7z`, `.exe` or `.cll`, or paste a GitHub link. Every install writes a checkpoint, so uninstall restores what it replaced.
 * **LAN server.** Start and stop a dedicated server with generated configs.
 * **ReShade.** Cinematic colour grading for every Plutonium game. Plutonium clears its `bin` folder on every start, so the watchdog puts the files back the moment a game opens and saves your in-game preset edits.
+* **DLSS 5 in Black Ops II, LAN only.** One Install button on the Quality of Life page downloads it and checks every file. Update appears when a new version is published. Online launches take it out first and will not start while any of it is left. Needs an NVIDIA RTX card.
 * **Fifteen themes.** Nocturne, Classic Things, OLED, the four Catppuccin flavours and the six T3 palettes.
 * **Self-updating.** Checks this repository's releases on start.
 

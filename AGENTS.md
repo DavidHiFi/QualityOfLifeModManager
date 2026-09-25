@@ -154,6 +154,32 @@ and `$VaultDir` in `resources/tools/reshade-watchdog.ps1` must agree
 The watchdog never overwrites a file that exists in `bin`; it only puts back what
 Plutonium deleted, and copies edited top-level `*.ini` back into the vault.
 
+**DLSS 5 is a downloaded payload with its own release tag, and it never goes online.**
+The app reads `dlss5-manifest.json` from the `dlss5-stable` release (`QOL_DLSS_RELEASE_URL`),
+downloads the archive it names, checks the archive's size and sha256, then checks every
+file against the archive's own `payload.json`. It unpacks with Windows' `tar.exe`, so
+7-Zip is not needed, and swaps the result into `reshade-lan\` whole. Rules that were paid for:
+
+* **Never re-host LumeniteFX.** Its AGNYA licence forbids it. The payload lists it
+  under `remote` with the author's raw URL and a hash, and the app fetches it from
+  there. `nvngx_dlss.dll` comes from `NVIDIA/DLSS` the same way. The app accepts no
+  other `remote` origin (`kRemoteOrigins`). Payload 1.0.0 carried the kernel and was
+  deleted from the release for that reason.
+* **The payload must run on a PC with no shader pack.** 1.0.0 had no `ReShade.fxh`,
+  no Lumenite includes and no 64-bit VC++ runtime. It worked only on this PC, which had
+  all three from other installs. `kDlssRequired` and `-selftest -testdlss` now fail on that.
+* **Online is enforced in `GameLauncher::launchOnline`, not in the GUI.** Both the
+  button and `-nogui -online` go through it. It switches bin to the stock build, parks
+  any stray `*.addon*` (DLSS 5 Swapper puts its own feeder in bin), and refuses to
+  start unless `onlineReShadeSafe` passes.
+* **A LAN session puts bin back when it ends** (`MainWindow::afterSessionEnded`,
+  and again at app start). Otherwise the add-on build sits in bin between sessions, and
+  Plutonium's own launcher would start an online game on top of it.
+* **Publishing a new payload:** `python scripts\build-dlss5-payload.py --donor <game
+  folder with a working feeder> --vcredist <...\x64\Microsoft.VC143.CRT> --output <dir>
+  --version X.Y.Z`. Upload the zip, then `--clobber` the manifest last. Every file is
+  pinned; a donor file that has drifted stops the build.
+
 **Page indices.** `MainWindow::ToolIndex` must match the `m_stack->addWidget` order,
 and sidebar tool buttons map with `kFirstTool`. Insert new pages in both places.
 
@@ -169,7 +195,12 @@ throwaway folder that has an empty `bin\plutonium-bootstrapper-win32.exe`.
 powershell -ExecutionPolicy Bypass -File scripts\build.ps1 -Clean
 dist\QualityOfLifeModManager.exe -installcheck
 dist\QualityOfLifeModManager.exe -selftest -plutoniumdir <throwaway root>
+dist\QualityOfLifeModManager.exe -selftest -testdlss -plutoniumdir <throwaway root>
 ```
+
+`-testdlss` downloads the published DLSS 5 payload (about 180 MB plus LumeniteFX and
+NVIDIA's runtime) into a scratch root, then checks LAN, online, end of session,
+update in place and removal.
 
 `-selftest` exercises ReShade install and remove, watchdog unpack and start,
 every theme, and the Home card / QoL row update rules, one PASS/FAIL line each.

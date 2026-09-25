@@ -81,18 +81,26 @@ namespace QolService
     ReShadeMode activeReShadeMode(const AppSettings &s);
     // True when the add-on build is the one currently in bin.
     bool addonReShadeActive(const AppSettings &s);
-    // The payload is downloaded from a separate, versioned GitHub release.
-    // Only a verified archive can replace the installed copy.
+    // The DLSS 5 payload is published under its own release tag
+    // (QOL_DLSS_RELEASE_URL), never shipped in the exe. Install downloads it,
+    // checks the archive and every file in it, fetches LumeniteFX from its
+    // author, and swaps it in whole; nothing half-installed is ever used.
     bool dlssPayloadReady(const AppSettings &s);
     QString dlssPayloadSummary(const AppSettings &s);
-    QString installedDlssVersion(const AppSettings &s);
+    QString installedDlssVersion(const AppSettings &s);   // "" for none, or a pre-2.3 import
     bool latestDlssRelease(DlssRelease &release, QString &error);
     bool installDlssPayload(const AppSettings &s, const DlssRelease &release, const Progress &p, QString &error);
     bool removeDlssPayload(const AppSettings &s, QString &error);
+    // True only when bin holds nothing an online session must not carry: the
+    // add-on runtime, the feeder, any add-on, the helper or the DLSS preset.
     bool onlineReShadeSafe(const AppSettings &s, QString &error);
     // Puts the right build, add-ons, shader and preset entries in bin. `dlss`
     // asks for the DLSS 5 payload on top, and is ignored unless mode is Lan.
     bool applyReShadeMode(const AppSettings &s, ReShadeMode mode, bool dlss, QString &error);
+    // After a LAN session ends: bin goes back to its online state, so what is
+    // left on disk between sessions is never the add-on build. A no-op when
+    // the last session was not LAN.
+    bool leaveLanState(const AppSettings &s, QString &error);
     // ReShade must not be there at all: what an unticked box asks for.
     bool ensureReShadeAbsent(const AppSettings &s, QString &error);
 

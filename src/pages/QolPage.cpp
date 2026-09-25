@@ -76,9 +76,10 @@ QolPage::QolPage(AppSettings &settings, QWidget *parent)
                           "every start, so play with the ReShade option on the game page (or start the watchdog "
                           "here) and the files are put back the moment the game opens."));
     m_dlss = addRow(root, tr("LAN ONLY"), tr("DLSS 5 Neural Rendering"),
-                    tr("One click downloads and checks the DLSS 5 payload for Black Ops II. The manager enables "
-                       "it for LAN play and removes its add-on, helper and neural preset before online play. "
-                       "Needs an RTX card; the download is about 230 MB."));
+                    tr("NVIDIA DLSS 5 in Black Ops II. Install downloads it and checks every file; the app keeps "
+                       "it up to date. It runs only in LAN games: every online launch takes it out of Plutonium "
+                       "first and will not start while any of it is still there. Needs an NVIDIA RTX card. "
+                       "About 180 MB."));
     root->addStretch();
 
     scroll->setWidget(inner);
@@ -182,8 +183,30 @@ QolPage::QolPage(AppSettings &settings, QWidget *parent)
         if (!GameLauncher::startReShadeWatchdog(m_settings.plutoniumInstance, err))
             QMessageBox::warning(this, tr("ReShade"), err);
     });
-    connect(m_dlss.primary, &QPushButton::clicked, this, [this]() {
+    // One button, no folder to pick. Install and Update are the same job: read
+    // the published manifest, download, verify, swap in. Remove takes it all
+    // back out of bin and out of storage.
+    const auto installLatest = [this](const QString &title) {
+        runJob(title, [this](QString &err, const QolService::Progress &p) {
+            if (p) p(tr("Checking the published DLSS 5 release..."), 2);
+            QolService::DlssRelease release;
+            if (!QolService::latestDlssRelease(release, err)) return false;
+            return QolService::installDlssPayload(m_settings, release, p, err);
+        }, [this](bool ok) {
+            if (!ok) return;
+            // Installing is asking for it: tick both boxes so the very next LAN
+            // launch of Black Ops II runs DLSS without another trip to the
+            // game page. Online is unaffected either way.
+            m_settings.launchReShade = true;
+            m_settings.launchDlss5 = true;
+            m_settings.saveToIni();
+            m_dlssCheckStarted = false;   // re-read the release so Update disappears
+        });
+    };
+    connect(m_dlss.primary, &QPushButton::clicked, this, [this, installLatest]() {
         if (QolService::dlssPayloadReady(m_settings)) {
+            if (!confirm(tr("DLSS 5"), tr("Remove DLSS 5 from this PC? ReShade stays installed.")))
+                return;
             runJob(tr("Removing DLSS 5"), [this](QString &err, const QolService::Progress &) {
                 return QolService::removeDlssPayload(m_settings, err);
             }, [this](bool ok) {
@@ -194,24 +217,10 @@ QolPage::QolPage(AppSettings &settings, QWidget *parent)
             });
             return;
         }
-        runJob(tr("Installing DLSS 5"), [this](QString &err, const QolService::Progress &p) {
-            QolService::DlssRelease release;
-            if (!QolService::latestDlssRelease(release, err)) return false;
-            return QolService::installDlssPayload(m_settings, release, p, err);
-        }, [this](bool ok) {
-            if (ok) {
-                m_settings.launchReShade = true;
-                m_settings.launchDlss5 = true;
-                m_settings.saveToIni();
-            }
-        });
+        installLatest(tr("Installing DLSS 5"));
     });
-    connect(m_dlss.secondary, &QPushButton::clicked, this, [this]() {
-        runJob(tr("Updating DLSS 5"), [this](QString &err, const QolService::Progress &p) {
-            QolService::DlssRelease release;
-            if (!QolService::latestDlssRelease(release, err)) return false;
-            return QolService::installDlssPayload(m_settings, release, p, err);
-        });
+    connect(m_dlss.secondary, &QPushButton::clicked, this, [installLatest, this]() {
+        installLatest(tr("Updating DLSS 5"));
     });
 
     retranslate();
@@ -342,17 +351,24 @@ void QolPage::refresh()
     m_reshade.secondary->setVisible(rs);
 
     const bool dlss = QolService::dlssPayloadReady(m_settings);
-    m_dlss.status->setText(dlss ? tr("Installed: %1 Used on LAN launches of Black Ops II.")
-                                      .arg(QolService::dlssPayloadSummary(m_settings))
-                                : tr("Not installed. Press Install to download the verified payload."));
-    m_dlss.primary->setText(dlss ? tr("Remove") : tr("Install"));
-    m_dlss.primary->setProperty("cssClass", dlss ? "danger" : "primary");
-    m_dlss.primary->setEnabled(pluto);
     const QString installedVersion = QolService::installedDlssVersion(m_settings);
+    // An install from before 2.3 has no version and may be missing files a
+    // clean PC needs, so it is always offered the managed one.
     const bool update = dlss && m_dlssRelease.isValid()
                         && (installedVersion.isEmpty()
                             || VersionCompare::isUpdate(installedVersion, m_dlssRelease.version));
-    m_dlss.secondary->setText(tr("Update to %1").arg(m_dlssRelease.version));
+    if (!dlss)
+        m_dlss.status->setText(tr("Not installed."));
+    else if (update)
+        m_dlss.status->setText(tr("Installed (%1). Version %2 is available.")
+                                   .arg(QolService::dlssPayloadSummary(m_settings), m_dlssRelease.version));
+    else
+        m_dlss.status->setText(tr("Installed (%1). Runs in LAN games of Black Ops II; never online.")
+                                   .arg(QolService::dlssPayloadSummary(m_settings)));
+    m_dlss.primary->setText(dlss ? tr("Remove") : tr("Install"));
+    m_dlss.primary->setProperty("cssClass", dlss ? "danger" : "primary");
+    m_dlss.primary->setEnabled(pluto);
+    m_dlss.secondary->setText(tr("Update"));
     m_dlss.secondary->setVisible(update);
     m_dlss.secondary->setEnabled(pluto);
 

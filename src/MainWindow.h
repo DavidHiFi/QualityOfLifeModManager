@@ -44,6 +44,8 @@ private:
     // none at all when the box is unticked.
     bool prepareReShade(QolService::ReShadeMode mode, bool wantDlss);
     bool startReShadeWatchdogIfWanted();
+    // A game this app started has closed: take LAN-only files back out of bin.
+    void afterSessionEnded();
 
     QWidget *buildSidebar();
     QWidget *buildHeader();

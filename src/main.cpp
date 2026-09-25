@@ -174,7 +174,8 @@ int main(int argc, char *argv[])
                                 "account) instead of LAN."});
     parser.addOption({"selftest", "Offline checks against -plutoniumdir (ReShade install/remove, watchdog unpack, "
                                   "online handler probe); prints one line per check and exits non-zero on failure."});
-    parser.addOption({"testdlss", "With -selftest: download the published DLSS 5 payload and check LAN, online, and removal in a scratch root."});
+    parser.addOption({"testdlss", "With -selftest: install the published DLSS 5 payload into a scratch Plutonium "
+                                  "root and check LAN, online, end of session, update and removal."});
     parser.addOption({"installcheck", "Check the installed Qt, MinGW, TLS and Windows graphics runtimes, then exit."});
     parser.addOption({"checkupdates", "Print what each component resolves to and what is pending, then exit. "
                                       "Shows whether a version came from the feed or from the component's own repo."});
@@ -268,6 +269,9 @@ int main(int argc, char *argv[])
         // install silently uninstalled that user's ReShade.
         AppSettings rs = settings;
         rs.plutoniumInstance = QDir(QDir::tempPath()).filePath(QStringLiteral("qol-selftest-reshade"));
+        // Nothing can hold the scratch root open, so a real game running on
+        // this PC must not make every install check refuse.
+        qputenv("QOL_SELFTEST_SCRATCH", "1");
         QDir(rs.plutoniumInstance).removeRecursively();
         QDir().mkpath(QDir(rs.plutoniumInstance).filePath(QStringLiteral("bin")));
         check("reshade install", QolService::installReShade(rs, err), err);
@@ -322,22 +326,67 @@ int main(int argc, char *argv[])
                 const bool found = QolService::latestDlssRelease(release, e);
                 check("dlss release found", found, e);
                 if (found) {
+                    const QString bin = QDir(rs.plutoniumInstance).filePath(QStringLiteral("bin"));
+                    const auto inBin = [&](const char *rel) { return QFileInfo::exists(QDir(bin).filePath(QLatin1String(rel))); };
+                    note("dlss release", release.version + QStringLiteral(", ") + QString::number(release.size) + QStringLiteral(" bytes"));
+                    // A clean PC: no ReShade, no shader pack, nothing in bin.
                     e.clear();
                     check("dlss managed install", QolService::installDlssPayload(rs, release, {}, e), e);
-                    check("dlss installed version", QolService::installedDlssVersion(rs) == release.version);
+                    check("dlss installed version", QolService::installedDlssVersion(rs) == release.version,
+                          QolService::installedDlssVersion(rs));
                     check("dlss payload complete", QolService::dlssPayloadReady(rs));
+                    check("dlss install leaves bin clean", !inBin("dlss5-feed.addon32") && !inBin("host64"));
                     e.clear();
                     check("dlss lan applied", QolService::applyReShadeMode(rs, QolService::ReShadeMode::Lan, true, e), e);
-                    check("dlss add-on in lan bin", QFileInfo::exists(QDir(rs.plutoniumInstance).filePath(QStringLiteral("bin/dlss5-feed.addon32"))));
+                    check("dlss lan is the add-on build", QolService::addonReShadeActive(rs));
+                    check("dlss add-on in lan bin", inBin("dlss5-feed.addon32"));
+                    check("dlss helper in lan bin", inBin("host64/dlss5-feed-host64.exe") && inBin("host64/nvngx_dlssnr.dll")
+                                                    && inBin("host64/nvngx_dlss.dll") && inBin("host64/vcruntime140_1.dll"));
+                    // Everything the two shaders include, on a PC with no pack.
+                    check("dlss shaders compile on a clean pc",
+                          inBin("reshade-shaders/Shaders/ReShade.fxh")
+                              && inBin("reshade-shaders/Shaders/LumeniteFX/lumenite_Kernel.fx")
+                              && inBin("reshade-shaders/Shaders/LumeniteFX/include/lumenite_Projections.fxh")
+                              && inBin("reshade-shaders/Shaders/LumeniteFX/include/lumenite_Helpers.fxh")
+                              && inBin("reshade-shaders/Shaders/LumeniteFX/include/lumenite_Compute.fxh"));
+                    check("dlss marker lan-dlss", QolService::activeReShadeMode(rs) == QolService::ReShadeMode::Lan);
+                    {
+                        QFile cfg(QDir(bin).filePath(QStringLiteral("dlss5-feed.cfg")));
+                        check("dlss feeder enabled for lan",
+                              cfg.open(QIODevice::ReadOnly) && cfg.readAll().contains("enabled=1"));
+                    }
                     e.clear();
                     check("dlss unsafe online before switch", !QolService::onlineReShadeSafe(rs, e));
+                    // A stray add-on dropped by another tool must not ride online.
+                    {
+                        QFile stray(QDir(bin).filePath(QStringLiteral("stray-test.addon32")));
+                        stray.open(QIODevice::WriteOnly);
+                        stray.write("x");
+                    }
                     e.clear();
                     check("dlss online switch", QolService::applyReShadeMode(rs, QolService::ReShadeMode::Online, false, e), e);
+                    e.clear();
                     check("dlss clean online bin", QolService::onlineReShadeSafe(rs, e), e);
+                    check("dlss online is the stock build", QolService::reShadeInstalled(rs) && !QolService::addonReShadeActive(rs));
+                    check("dlss stray add-on parked", !inBin("stray-test.addon32"));
                     check("dlss kept for next lan", QolService::dlssPayloadReady(rs));
+                    // LAN again, then a LAN session ends: bin must go back.
+                    e.clear();
+                    check("dlss lan again", QolService::applyReShadeMode(rs, QolService::ReShadeMode::Lan, true, e), e);
+                    e.clear();
+                    check("dlss leave lan after session", QolService::leaveLanState(rs, e), e);
+                    e.clear();
+                    check("dlss bin clean after lan session", QolService::onlineReShadeSafe(rs, e), e);
+                    // Re-installing the same release is an update in place.
+                    e.clear();
+                    check("dlss update in place", QolService::installDlssPayload(rs, release, {}, e), e);
+                    check("dlss still complete after update", QolService::dlssPayloadReady(rs));
                     e.clear();
                     check("dlss one-click removal", QolService::removeDlssPayload(rs, e), e);
-                    check("dlss removed", !QolService::dlssPayloadReady(rs));
+                    check("dlss removed", !QolService::dlssPayloadReady(rs)
+                                              && !QDir(QolService::reShadeLanVault(rs)).exists());
+                    e.clear();
+                    check("dlss bin clean after removal", QolService::onlineReShadeSafe(rs, e), e);
                 }
             }
         }

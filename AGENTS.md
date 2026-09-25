@@ -168,6 +168,15 @@ file against the archive's own `payload.json`. It unpacks with Windows' `tar.exe
 * **The payload must run on a PC with no shader pack.** 1.0.0 had no `ReShade.fxh`,
   no Lumenite includes and no 64-bit VC++ runtime. It worked only on this PC, which had
   all three from other installs. `kDlssRequired` and `-selftest -testdlss` now fail on that.
+* **The helper's ReShade is `host64\d3d12.dll`, never `dxgi.dll`.** The helper calls
+  `LoadLibrary("dxgi.dll")` first. On the user's PC a Windhawk mod scoped to every
+  process (Win32 UI Modernizer) has already loaded Windows' own `dxgi.dll` by then, so
+  that call returned the system copy: no ReShade, no RenoDX consumer, no neural pass, with
+  every file present and the feed running. The helper log still says "dxgi.dll here is
+  Windows' own", and its banner says ReShade did not attach. Both are wrong under this
+  name. The truth is in `host64\ReShade.log`: "loaded from ...\d3d12.dll",
+  "feature 18 created", "evaluation succeeded". Check with
+  `host64\dlss5-feed-host64.exe --test` in a copy of the folder.
 * **Online is enforced in `GameLauncher::launchOnline`, not in the GUI.** Both the
   button and `-nogui -online` go through it. It switches bin to the stock build, parks
   any stray `*.addon*` (DLSS 5 Swapper puts its own feeder in bin), and refuses to

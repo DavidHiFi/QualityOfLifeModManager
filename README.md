@@ -23,7 +23,7 @@ One window for the whole [Quality of Life series](https://github.com/DavidHiFi/P
 ## What it does
 
 * **Quality of Life page.** Install, update or remove each game's mod, plus the Black Ops II extras: HD texture pack, custom sounds, controller icons (PlayStation 5, Switch, Xbox). Everything goes into your Plutonium folder; the game's own files are never touched.
-* **Backups.** Every Quality of Life install first copies your own textures, sounds, controller icons, ReShade setup, scripts and settings into `storage	6ackups`. Put any of them back from the Quality of Life page, or take a fresh copy, including your other mods and maps. Removing a pack offers to put your originals back.
+* **Backups.** Every Quality of Life install first copies your own textures, sounds, controller icons, ReShade setup, scripts and settings into `storage\t6\backups`. Put any of them back from the Quality of Life page, or take a fresh copy, including your other mods and maps. Removing a pack offers to put your originals back.
 * **Play.** One page per game with the game art. LAN starts the game through Plutonium's bootstrapper with the selected mod loaded. Online hands off to Plutonium's own launcher, which signs you in. Tick **ReShade** to start the watchdog beside the game.
 * **Home.** A catalog of community mods with cover art, install badges and one-click install.
 * **Mods.** Drop a `.zip`, `.rar`, `.7z`, `.exe` or `.cll`, or paste a GitHub link. Every install writes a checkpoint, so uninstall restores what it replaced.

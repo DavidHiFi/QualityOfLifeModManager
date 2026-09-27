@@ -146,7 +146,7 @@ running rather than failing on a locked DLL, and re-checks the result before
 reporting success.
 
 **Backups are the player's files, kept where the script kept them.**
-`src/QolBackups.*` writes `storage	6ackups\<kind>\<part>\`, the layout
+`src/QolBackups.*` writes `storage\t6\backups\<kind>\<part>\`, the layout
 qol-installer.ps1 and the 1.x app used, so a backup taken by either restores
 here. Kinds: images, zone, controller, reshade, mod, scripts (both `scripts\`
 and `raw\`), settings, mods (other mods and `usermaps`, never automatic).
@@ -163,7 +163,7 @@ Rules that matter:
 * Settings backups name their files and never carry stats. `repairAaSamples`
   takes a saved `r_aaSamples` above 8 back to 4 in the live config and in the
   backups, because 16 stops the game at a black screen as the mod loads.
-* 2.0-2.2 kept the ReShade backup flat in `backupseshade`; restore reads that too.
+* 2.0-2.2 kept the ReShade backup flat in `backups\reshade`; restore reads that too.
 
 **Mode ids for T4 and T5 Zombies are `t4sp` and `t5sp`.** `t4zm`/`t5zm` do not
 exist; the bootstrapper prints usage and quits, which looks like a flash and no game.

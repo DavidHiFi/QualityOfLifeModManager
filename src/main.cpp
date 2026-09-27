@@ -3,6 +3,7 @@
 #include "GameLauncher.h"
 #include "Theme.h"
 #include "MainWindow.h"
+#include "QolBackups.h"
 #include "QolService.h"
 #include "UpdateService.h"
 #include "PlutoniumAuth.h"
@@ -17,6 +18,8 @@
 #include <QFileInfo>
 #include <QLibrary>
 #include <QOperatingSystemVersion>
+#include <QScrollArea>
+#include <QScrollBar>
 #include <QSslSocket>
 #include <QSysInfo>
 #include <QTextStream>
@@ -245,6 +248,9 @@ int main(int argc, char *argv[])
         note("plutonium account", PlutoniumAuth::accountSummary(
                  PlutoniumAuth::tokenRoot(settings.plutoniumInstance)));
         QString err;
+        // Every check below that writes runs on its own scratch root, so a
+        // game open on the real one is no reason to refuse.
+        QolService::ignoreRunningGameForSelftest();
         // Every ReShade check runs against its own scratch root. They used to
         // use -plutoniumdir, which meant pointing the selftest at a real
         // install silently uninstalled that user's ReShade.
@@ -311,6 +317,74 @@ int main(int argc, char *argv[])
             check("theme " + key, Theme::token("BG").startsWith('#') && !Theme::displayName(key).isEmpty(), Theme::displayName(key));
         }
         check("series has t6", QolService::seriesFor("t6").released);
+
+        // Backups, on their own scratch root for the same reason as ReShade:
+        // a restore writes into storage, and this must never be the user's.
+        {
+            AppSettings b = settings;
+            b.plutoniumInstance = QDir(QDir::tempPath()).filePath(QStringLiteral("qol-selftest-backups"));
+            QDir(b.plutoniumInstance).removeRecursively();
+            const QString t6 = QolService::t6Storage(b);
+            auto put = [](const QString &path, const QByteArray &data) {
+                QDir().mkpath(QFileInfo(path).absolutePath());
+                QFile f(path);
+                return f.open(QIODevice::WriteOnly | QIODevice::Truncate) && f.write(data) == data.size();
+            };
+            auto read = [](const QString &path) {
+                QFile f(path);
+                return f.open(QIODevice::ReadOnly) ? f.readAll() : QByteArray();
+            };
+            put(t6 + "/images/mine.iwi", "mine");
+            put(t6 + "/images/ours.iwi", "ours");
+            put(t6 + "/images/xenonbutton_a.iwi", "stock a");
+            put(t6 + "/zone/mine.sabs", "zone");
+            put(t6 + "/scripts/zm/mine.gsc", "script");
+            put(t6 + "/raw/scripts/zm/raw.gsc", "raw");
+            put(t6 + "/players/plutonium_zm.cfg", "seta r_aaSamples \"16\"\r\nseta cg_fov \"90\"\r\n");
+            put(QolService::stateDir(b) + "/installed-images.txt", "ours.iwi\n");
+            put(b.plutoniumInstance + "/bin/Mine.ini", "preset");
+            QString e;
+            check("backup: before install", QolBackups::backupBeforeInstall(b, {"images"}, QolBackups::automaticKinds(), {}, e), e);
+            const QString bk = QolBackups::root(b);
+            check("backup: images taken", QFileInfo::exists(bk + "/images/images/mine.iwi"));
+            check("backup: our own pack files left out", !QFileInfo::exists(bk + "/images/images/ours.iwi"));
+            check("backup: scripts folder taken", QFileInfo::exists(bk + "/scripts/scripts/zm/mine.gsc"));
+            check("backup: raw folder taken", QFileInfo::exists(bk + "/scripts/raw/scripts/zm/raw.gsc"));
+            check("backup: controller icons taken", QFileInfo::exists(bk + "/controller/controller/xenonbutton_a.iwi"));
+            check("backup: custom ReShade preset taken", QFileInfo::exists(bk + "/reshade/bin/Mine.ini"));
+            check("backup: 16x MSAA taken out of the settings backup",
+                  read(bk + "/settings/players/plutonium_zm.cfg").contains("r_aaSamples \"4\"\r\nseta cg_fov"));
+            check("backup: other mods never automatic", !QolBackups::exists(b, "mods"));
+
+            // The older copy is the one worth having.
+            put(t6 + "/images/mine.iwi", "changed");
+            QString msg;
+            check("backup: older copy kept",
+                  QolBackups::backup(b, "images", false, {}, msg) == QolBackups::Result::KeptOlder
+                      && read(bk + "/images/images/mine.iwi") == "mine", msg);
+
+            // Restore puts the player's file back and takes it off the pack's
+            // manifest, so the next Remove cannot delete it.
+            put(QolService::stateDir(b) + "/installed-images.txt", "ours.iwi\nmine.iwi\n");
+            QFile::remove(t6 + "/scripts/zm/mine.gsc");
+            check("restore: images", QolBackups::restore(b, "images", {}, e), e);
+            check("restore: file is back", read(t6 + "/images/mine.iwi") == "mine");
+            check("restore: dropped from the pack manifest",
+                  !read(QolService::stateDir(b) + "/installed-images.txt").contains("mine.iwi"));
+            check("restore: scripts", QolBackups::restore(b, "scripts", {}, e)
+                      && QFileInfo::exists(t6 + "/scripts/zm/mine.gsc"), e);
+
+            // A ReShade backup from 2.0-2.2 is flat in backups\reshade.
+            QolBackups::remove(b, "reshade", e);
+            put(bk + "/reshade/ReShade.ini", "old flat");
+            check("restore: old flat ReShade backup",
+                  QolBackups::restore(b, "reshade", {}, e) && read(b.plutoniumInstance + "/bin/ReShade.ini") == "old flat", e);
+
+            check("backup: replace", QolBackups::backup(b, "images", true, {}, msg) == QolBackups::Result::Saved
+                      && read(bk + "/images/images/mine.iwi") == "mine", msg);
+            check("backup: delete", QolBackups::remove(b, "images", e) && !QolBackups::exists(b, "images"), e);
+            QDir(b.plutoniumInstance).removeRecursively();
+        }
 
         // Home card state. These are the cases that used to leave a card saying
         // "Update" forever, so they are checked, not just eyeballed.
@@ -437,6 +511,12 @@ int main(int argc, char *argv[])
                 window.debugShowPage(pageIndex);
         });
         QTimer::singleShot(qMax(400, qEnvironmentVariableIntValue("QOL_SHOT_DELAY")), &window, [&window, screenshotPath]() {
+            // QOL_SCROLL=<px>: scroll every visible page to that offset first,
+            // for rows below the fold.
+            if (qEnvironmentVariableIsSet("QOL_SCROLL"))
+                for (QScrollArea *area : window.findChildren<QScrollArea *>())
+                    if (area->isVisible())
+                        area->verticalScrollBar()->setValue(qEnvironmentVariableIntValue("QOL_SCROLL"));
             window.grab().save(screenshotPath);
             QApplication::quit();
         });

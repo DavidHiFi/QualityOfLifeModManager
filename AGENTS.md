@@ -145,6 +145,26 @@ watchdog first (it would put the files straight back), refuses while a game is
 running rather than failing on a locked DLL, and re-checks the result before
 reporting success.
 
+**Backups are the player's files, kept where the script kept them.**
+`src/QolBackups.*` writes `storage	6ackups\<kind>\<part>\`, the layout
+qol-installer.ps1 and the 1.x app used, so a backup taken by either restores
+here. Kinds: images, zone, controller, reshade, mod, scripts (both `scripts\`
+and `raw\`), settings, mods (other mods and `usermaps`, never automatic).
+Rules that matter:
+
+* Every install calls `backupFirst` before it writes. Each kind keeps its
+  **oldest** copy unless replaced by hand; the oldest is the one from before
+  anything was installed. A required kind that cannot be copied stops the
+  install; the extras are skipped and logged.
+* The texture, sound and icon backups leave out files listed in the app's own
+  `installed-*.txt` manifests. A backup is for what was theirs.
+* A restore takes the restored files off those manifests, or the next Remove
+  would delete the player's own file.
+* Settings backups name their files and never carry stats. `repairAaSamples`
+  takes a saved `r_aaSamples` above 8 back to 4 in the live config and in the
+  backups, because 16 stops the game at a black screen as the mod loads.
+* 2.0-2.2 kept the ReShade backup flat in `backupseshade`; restore reads that too.
+
 **Mode ids for T4 and T5 Zombies are `t4sp` and `t5sp`.** `t4zm`/`t5zm` do not
 exist; the bootstrapper prints usage and quits, which looks like a flash and no game.
 
@@ -171,7 +191,7 @@ dist\QualityOfLifeModManager.exe -installcheck
 dist\QualityOfLifeModManager.exe -selftest -plutoniumdir <throwaway root>
 ```
 
-`-selftest` exercises ReShade install and remove, watchdog unpack and start,
+`-selftest` exercises ReShade install and remove, backup and restore, watchdog unpack and start,
 every theme, and the Home card / QoL row update rules, one PASS/FAIL line each.
 It reports the signed-in Plutonium account and what each catalog mod currently
 resolves to as INFO lines (never failures: a throwaway root has neither). The
@@ -276,8 +296,6 @@ its `del` does not, which silently leaves a 12 MB staged build behind.
 
 ## What is not done
 
-* The 1.x app's backups page (per-kind backup and restore) has no equivalent yet;
-  installs still take the one-time ReShade backup and manifests for removal.
 * Zombies Declassified installs through its own manifest via the Mods page; there is
   no in-app verifier for its 9 GB payload.
 * Live game testing of every launch path on a real install has not been done from

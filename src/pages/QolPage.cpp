@@ -3,8 +3,10 @@
 #include "AppSettings.h"
 #include "GameLauncher.h"
 #include "ProgressDialog.h"
+#include "QolBackups.h"
 #include "QolService.h"
 #include "Version.h"
+#include "../Checkables.h"
 #include "../Theme.h"
 
 #include <QDesktopServices>
@@ -29,6 +31,19 @@ QLabel *section(QWidget *parent, const QString &text)
     auto *l = new QLabel(text, parent);
     l->setObjectName("SectionTitle");
     return l;
+}
+
+QString fmtFiles(int n)
+{
+    return n == 1 ? QObject::tr("1 file") : QObject::tr("%1 files").arg(n);
+}
+
+QString fmtSize(qint64 b)
+{
+    if (b >= 1000LL * 1000 * 1000) return QObject::tr("%1 GB").arg(b / 1e9, 0, 'f', 1);
+    if (b >= 1000 * 1000)          return QObject::tr("%1 MB").arg(b / 1e6, 0, 'f', 0);
+    if (b >= 1000)                 return QObject::tr("%1 KB").arg(b / 1e3, 0, 'f', 0);
+    return QObject::tr("%1 bytes").arg(b);
 }
 
 } // namespace
@@ -81,6 +96,46 @@ QolPage::QolPage(AppSettings &settings, QWidget *parent)
                        "full build of ReShade, which the manager only puts in place for LAN - online keeps the "
                        "stock build, whose add-on support is deliberately limited. Needs an RTX card and the "
                        "237 MB payload imported from a folder that already has DLSS 5 installed."));
+
+    // Backups ---------------------------------------------------------------
+    root->addWidget(section(inner, tr("BACKUPS")));
+    auto *backupHint = new QLabel(tr("Copies of your own files, kept in storage\\t6\\backups with one plain "
+                                     "folder per kind, so you can always put them back - here, or by hand. "
+                                     "An install never deletes a backup, and each kind keeps its oldest "
+                                     "copy (the one from before anything was installed) until you replace "
+                                     "it."), inner);
+    backupHint->setObjectName("MutedHint");
+    backupHint->setWordWrap(true);
+    root->addWidget(backupHint);
+    {
+        auto *opts = new QHBoxLayout();
+        m_backupAuto = new Ui::CheckBox(tr("Back up my files before every install"), inner);
+        m_backupAuto->setChecked(m_settings.backupBeforeInstall);
+        m_backupAuto->setToolTip(tr("Before the mod, a pack or controller icons are installed, your "
+                                    "textures, sounds, icons, ReShade setup, scripts and settings are "
+                                    "copied into the backups folder first. Only the first time for each "
+                                    "kind: after that the older copy is kept. ReShade is always backed "
+                                    "up before it is installed."));
+        opts->addWidget(m_backupAuto, 1);
+        m_backupOpen = new QPushButton(tr("Open backups folder"), inner);
+        m_backupOpen->setCursor(Qt::PointingHandCursor);
+        m_backupOpen->setMinimumHeight(32);
+        opts->addWidget(m_backupOpen, 0, Qt::AlignRight);
+        root->addLayout(opts);
+    }
+    m_backupAll = addRow(root, tr("EVERYTHING"), tr("All my files"),
+                         tr("Every kind below except the mod itself and your other mods and maps. "
+                            "This is what is taken automatically before an install."));
+    for (const QString &kind : QolBackups::kinds()) {
+        const QolBackups::Info i = QolBackups::info(m_settings, kind, false);
+        Row r = addRow(root, tr("BACKUP"), i.label, i.desc);
+        r.tertiary = new QPushButton(r.card);
+        r.tertiary->setCursor(Qt::PointingHandCursor);
+        r.tertiary->setMinimumHeight(36);
+        r.tertiary->setText(tr("More"));
+        static_cast<QHBoxLayout *>(r.card->layout())->insertWidget(1, r.tertiary, 0, Qt::AlignVCenter);
+        m_backupRows << r;
+    }
     root->addStretch();
 
     scroll->setWidget(inner);
@@ -109,12 +164,10 @@ QolPage::QolPage(AppSettings &settings, QWidget *parent)
 
     connect(m_textures.primary, &QPushButton::clicked, this, [this]() {
         if (QolService::packInstalled(m_settings, QolService::Pack::Textures)) {
-            if (!confirm(tr("HD texture pack"), tr("Remove the HD texture pack?")))
-                return;
-            QString err;
-            if (!QolService::removePack(m_settings, QolService::Pack::Textures, err))
-                QMessageBox::warning(this, tr("HD texture pack"), err);
-            refresh();
+            removeWithRestore(tr("HD texture pack"), tr("Remove the HD texture pack?"), QStringLiteral("images"),
+                              [this](QString &err) {
+                                  return QolService::removePack(m_settings, QolService::Pack::Textures, err);
+                              });
             return;
         }
         runJob(tr("Installing the HD texture pack"),
@@ -124,12 +177,10 @@ QolPage::QolPage(AppSettings &settings, QWidget *parent)
     });
     connect(m_sounds.primary, &QPushButton::clicked, this, [this]() {
         if (QolService::packInstalled(m_settings, QolService::Pack::Sounds)) {
-            if (!confirm(tr("Custom sounds"), tr("Remove the custom sound pack?")))
-                return;
-            QString err;
-            if (!QolService::removePack(m_settings, QolService::Pack::Sounds, err))
-                QMessageBox::warning(this, tr("Custom sounds"), err);
-            refresh();
+            removeWithRestore(tr("Custom sounds"), tr("Remove the custom sound pack?"), QStringLiteral("zone"),
+                              [this](QString &err) {
+                                  return QolService::removePack(m_settings, QolService::Pack::Sounds, err);
+                              });
             return;
         }
         runJob(tr("Installing the custom sounds"),
@@ -158,22 +209,21 @@ QolPage::QolPage(AppSettings &settings, QWidget *parent)
                });
     });
     connect(m_controller.secondary, &QPushButton::clicked, this, [this]() {
-        if (!confirm(tr("Controller icons"), tr("Go back to the game's own button icons?")))
-            return;
-        QString err;
-        if (!QolService::removeController(m_settings, err))
-            QMessageBox::warning(this, tr("Controller icons"), err);
-        refresh();
+        removeWithRestore(tr("Controller icons"), tr("Go back to the game's own button icons?"),
+                          QStringLiteral("controller"), [this](QString &err) {
+                              return QolService::removeController(m_settings, err);
+                          });
     });
     connect(m_reshade.primary, &QPushButton::clicked, this, [this]() {
         QString err;
         if (QolService::reShadeInstalled(m_settings)) {
-            if (!confirm(tr("ReShade"), tr("Remove ReShade from Plutonium's bin folder?")))
-                return;
             // Remove means gone: the add-ons, the 64-bit host and the preset
             // entries that name them go with it, not just dxgi.dll.
-            if (!QolService::ensureReShadeAbsent(m_settings, err))
-                QMessageBox::warning(this, tr("ReShade"), err);
+            removeWithRestore(tr("ReShade"), tr("Remove ReShade from Plutonium's bin folder?"),
+                              QStringLiteral("reshade"), [this](QString &e) {
+                                  return QolService::ensureReShadeAbsent(m_settings, e);
+                              });
+            return;
         } else if (!QolService::installReShade(m_settings, err)) {
             QMessageBox::warning(this, tr("ReShade"), err);
         }
@@ -213,7 +263,175 @@ QolPage::QolPage(AppSettings &settings, QWidget *parent)
         refresh();
     });
 
+    // Backups ---------------------------------------------------------------
+    connect(m_backupAuto, &QCheckBox::toggled, this, [this](bool on) {
+        m_settings.backupBeforeInstall = on;
+        m_settings.saveToIni();
+    });
+    connect(m_backupOpen, &QPushButton::clicked, this, [this]() {
+        const QString dir = QolBackups::root(m_settings);
+        QDir().mkpath(dir);
+        QDesktopServices::openUrl(QUrl::fromLocalFile(dir));
+    });
+    connect(m_backupAll.primary, &QPushButton::clicked, this, [this]() {
+        // Kinds that already have a backup keep it: this fills the gaps, it
+        // does not overwrite the copies taken before anything was installed.
+        auto summary = std::make_shared<QStringList>();
+        runJob(tr("Backing up your files"),
+               [this, summary](QString &err, const std::function<void(const QString &, int)> &p) {
+                   for (const QString &k : QolBackups::automaticKinds()) {
+                       QString msg;
+                       if (QolBackups::backup(m_settings, k, false, p, msg) == QolBackups::Result::Failed) {
+                           err = msg;
+                           return false;
+                       }
+                       *summary << msg;
+                   }
+                   return true;
+               },
+               [this, summary]() {
+                   QMessageBox::information(this, tr("Backups"), summary->join(QStringLiteral("\n\n")));
+               });
+    });
+    connect(m_backupAll.secondary, &QPushButton::clicked, this, [this]() {
+        QStringList have;
+        for (const QString &k : QolBackups::automaticKinds())
+            if (QolBackups::exists(m_settings, k))
+                have << k;
+        if (have.isEmpty())
+            return;
+        QStringList titles;
+        for (const QString &k : have)
+            titles << QolBackups::info(m_settings, k).title;
+        if (!confirm(tr("Backups"), tr("Put back %1?\n\nYour backed-up files are copied over what is there "
+                                       "now. Files added since are left alone.").arg(titles.join(QStringLiteral(", ")))))
+            return;
+        runJob(tr("Putting your files back"),
+               [this, have](QString &err, const std::function<void(const QString &, int)> &p) {
+                   for (const QString &k : have)
+                       if (!QolBackups::restore(m_settings, k, p, err))
+                           return false;
+                   return true;
+               });
+    });
+    const QStringList kinds = QolBackups::kinds();
+    for (int i = 0; i < m_backupRows.size(); ++i) {
+        const QString kind = kinds[i];
+        connect(m_backupRows[i].primary, &QPushButton::clicked, this, [this, kind]() {
+            const QolBackups::Info info = QolBackups::info(m_settings, kind);
+            if (info.exists) {
+                if (!confirm(info.label, tr("Put %1 back?\n\nThe backup from %2 is copied over what is there "
+                                            "now. Files added since are left alone.")
+                                             .arg(info.title, info.when.toString(QStringLiteral("d MMM yyyy HH:mm")))))
+                    return;
+                runJob(tr("Putting back %1").arg(info.title),
+                       [this, kind](QString &err, const std::function<void(const QString &, int)> &p) {
+                           return QolBackups::restore(m_settings, kind, p, err);
+                       });
+                return;
+            }
+            auto message = std::make_shared<QString>();
+            runJob(tr("Backing up %1").arg(info.title),
+                   [this, kind, message](QString &err, const std::function<void(const QString &, int)> &p) {
+                       if (QolBackups::backup(m_settings, kind, false, p, *message) == QolBackups::Result::Failed) {
+                           err = *message;
+                           return false;
+                       }
+                       return true;
+                   },
+                   [this, info, message]() { QMessageBox::information(this, info.label, *message); });
+        });
+        connect(m_backupRows[i].secondary, &QPushButton::clicked, this, [this, kind]() {
+            const QolBackups::Info info = QolBackups::info(m_settings, kind);
+            if (!info.exists)
+                return;
+            QDesktopServices::openUrl(QUrl::fromLocalFile(info.folder));
+        });
+        connect(m_backupRows[i].tertiary, &QPushButton::clicked, this, [this, kind]() { backupMenu(kind); });
+    }
+
     retranslate();
+    refresh();
+}
+
+void QolPage::backupMenu(const QString &kind)
+{
+    const QolBackups::Info info = QolBackups::info(m_settings, kind);
+    QMessageBox box(this);
+    box.setWindowTitle(info.label);
+    box.setText(info.exists
+                    ? tr("Backup of %1 from %2: %3 files, %4.\n\nWhat would you like to do?")
+                          .arg(info.title, info.when.toString(QStringLiteral("d MMM yyyy HH:mm")))
+                          .arg(info.files).arg(fmtSize(info.bytes))
+                    : tr("There is no backup of %1 yet.").arg(info.title));
+    QAbstractButton *replace = box.addButton(info.exists ? tr("Back up again, replacing it") : tr("Back up now"),
+                                             QMessageBox::AcceptRole);
+    QAbstractButton *del = info.exists ? box.addButton(tr("Delete this backup"), QMessageBox::DestructiveRole) : nullptr;
+    box.addButton(QMessageBox::Cancel);
+    box.exec();
+    if (box.clickedButton() == replace) {
+        if (info.exists && !confirm(info.label, tr("Replace the backup from %1 with what is there now?\n\n"
+                                                   "The older copy is the one from before anything was "
+                                                   "installed. Once replaced it is gone.")
+                                                    .arg(info.when.toString(QStringLiteral("d MMM yyyy HH:mm")))))
+            return;
+        auto message = std::make_shared<QString>();
+        runJob(tr("Backing up %1").arg(info.title),
+               [this, kind, message](QString &err, const std::function<void(const QString &, int)> &p) {
+                   if (QolBackups::backup(m_settings, kind, true, p, *message) == QolBackups::Result::Failed) {
+                       err = *message;
+                       return false;
+                   }
+                   return true;
+               },
+               [this, info, message]() { QMessageBox::information(this, info.label, *message); });
+    } else if (del && box.clickedButton() == del) {
+        if (!confirm(info.label, tr("Delete the backup of %1? The files on your PC are not touched.").arg(info.title)))
+            return;
+        QString err;
+        if (!QolBackups::remove(m_settings, kind, err))
+            QMessageBox::warning(this, info.label, err);
+        refreshBackups();
+    }
+}
+
+void QolPage::removeWithRestore(const QString &title, const QString &question, const QString &backupKind,
+                                const std::function<bool(QString &)> &remove)
+{
+    QString err;
+    if (!QolBackups::exists(m_settings, backupKind)) {
+        if (!confirm(title, question))
+            return;
+        if (!remove(err))
+            QMessageBox::warning(this, title, err);
+        refresh();
+        return;
+    }
+    const QolBackups::Info info = QolBackups::info(m_settings, backupKind);
+    QMessageBox box(this);
+    box.setWindowTitle(title);
+    box.setText(question);
+    box.setInformativeText(tr("A backup of %1 from %2 was found.")
+                               .arg(info.title, info.when.toString(QStringLiteral("d MMM yyyy HH:mm"))));
+    QAbstractButton *withRestore = box.addButton(tr("Remove and put my originals back"), QMessageBox::AcceptRole);
+    QAbstractButton *plain = box.addButton(tr("Just remove"), QMessageBox::DestructiveRole);
+    box.addButton(QMessageBox::Cancel);
+    box.setDefaultButton(static_cast<QPushButton *>(withRestore));
+    box.exec();
+    if (box.clickedButton() != withRestore && box.clickedButton() != plain)
+        return;
+    if (!remove(err)) {
+        QMessageBox::warning(this, title, err);
+        refresh();
+        return;
+    }
+    if (box.clickedButton() == withRestore) {
+        runJob(tr("Putting back %1").arg(info.title),
+               [this, backupKind](QString &e, const std::function<void(const QString &, int)> &p) {
+                   return QolBackups::restore(m_settings, backupKind, p, e);
+               });
+        return;
+    }
     refresh();
 }
 
@@ -355,6 +573,8 @@ void QolPage::refresh()
         b->style()->polish(b);
     }
 
+    refreshBackups();
+
     // Latest versions arrive later, off the UI thread, and only once per page life.
     static bool asked = false;
     if (!asked) {
@@ -377,8 +597,48 @@ void QolPage::refresh()
     }
 }
 
+void QolPage::refreshBackups()
+{
+    const bool pluto = AppSettings::isPlutoniumRoot(m_settings.plutoniumInstance);
+    const QStringList kinds = QolBackups::kinds();
+    int have = 0;
+    int automatic = 0;
+    for (int i = 0; i < m_backupRows.size(); ++i) {
+        Row &r = m_backupRows[i];
+        const QolBackups::Info info = QolBackups::info(m_settings, kinds[i]);
+        const bool isAuto = QolBackups::automaticKinds().contains(kinds[i]);
+        if (isAuto) {
+            ++automatic;
+            if (info.exists) ++have;
+        }
+        const QString now = info.liveFiles == 0
+            ? tr("nothing of yours there now")
+            : tr("%1, %2 there now").arg(fmtFiles(info.liveFiles), fmtSize(info.liveBytes));
+        r.status->setText(info.exists
+                              ? tr("Backed up %1: %2, %3. (%4)")
+                                    .arg(info.when.toString(QStringLiteral("d MMM yyyy HH:mm")),
+                                         fmtFiles(info.files), fmtSize(info.bytes), now)
+                              : tr("No backup yet. (%1)").arg(now));
+        r.primary->setText(info.exists ? tr("Put back") : tr("Back up"));
+        r.primary->setEnabled(pluto && (info.exists || info.liveFiles > 0));
+        r.secondary->setText(tr("Open"));
+        r.secondary->setVisible(info.exists);
+        r.tertiary->setEnabled(pluto);
+    }
+    m_backupAll.status->setText(have == 0 ? tr("Nothing backed up yet.")
+                                          : tr("%1 of %2 kinds backed up.").arg(have).arg(automatic));
+    m_backupAll.primary->setText(tr("Back up all"));
+    m_backupAll.primary->setEnabled(pluto && have < automatic);
+    m_backupAll.secondary->setText(tr("Put all back"));
+    m_backupAll.secondary->setVisible(have > 0);
+    m_backupAll.secondary->setEnabled(pluto);
+    m_backupAuto->setEnabled(pluto);
+    m_backupOpen->setEnabled(pluto);
+}
+
 void QolPage::runJob(const QString &title,
-                     const std::function<bool(QString &, const std::function<void(const QString &, int)> &)> &job)
+                     const std::function<bool(QString &, const std::function<void(const QString &, int)> &)> &job,
+                     const std::function<void()> &after)
 {
     auto *progress = new ProgressDialog(title, this);
     progress->setAttribute(Qt::WA_DeleteOnClose);
@@ -387,7 +647,7 @@ void QolPage::runJob(const QString &title,
     progress->show();
     const QPointer<ProgressDialog> guard(progress);
     const QPointer<QolPage> self(this);
-    auto future = QtConcurrent::run([self, guard, job, title]() {
+    auto future = QtConcurrent::run([self, guard, job, title, after]() {
         auto report = [guard](const QString &text, int pct) {
             QMetaObject::invokeMethod(qApp, [guard, text, pct]() {
                 if (!guard) return;
@@ -398,13 +658,15 @@ void QolPage::runJob(const QString &title,
         };
         QString error;
         const bool ok = job(error, report);
-        QMetaObject::invokeMethod(qApp, [self, guard, ok, error, title]() {
+        QMetaObject::invokeMethod(qApp, [self, guard, ok, error, title, after]() {
             if (guard)
                 guard->close();
             if (!self)
                 return;
             if (!ok)
                 QMessageBox::warning(self, title, error.isEmpty() ? tr("The install failed.") : error);
+            else if (after)
+                after();
             self->refresh();
             emit self->installedChanged();
         }, Qt::QueuedConnection);

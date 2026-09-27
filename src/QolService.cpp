@@ -3,6 +3,7 @@
 #include "ArchiveTool.h"
 #include "Downloader.h"
 #include "GameLauncher.h"
+#include "QolBackups.h"
 #include "Version.h"
 
 #include <QCoreApplication>
@@ -207,6 +208,21 @@ Asset findAsset(const QJsonArray &releases, const QStringList &want, const QStri
     return {};
 }
 
+// Every install backs up first, the way qol-installer.ps1 did. `required` is
+// what this install is about to overwrite; the rest of the player's files are
+// copied while we are at it. Each kind keeps its OLDEST backup, so after the
+// first install this costs one folder check per kind, not another copy.
+bool backupFirst(const AppSettings &s, const QStringList &required, const QolService::Progress &p,
+                 QString &error)
+{
+    if (!s.backupBeforeInstall)
+        return true;
+    auto scaled = [&p](const QString &text, int pct) {
+        if (p) p(text, pct < 0 ? -1 : 1 + pct / 25);   // the backup's share of the bar is 1-5%
+    };
+    return QolBackups::backupBeforeInstall(s, required, QolBackups::automaticKinds(), scaled, error);
+}
+
 QString tempDir(const QString &tag)
 {
     const QString d = QDir::temp().filePath(QStringLiteral("qol-%1-%2").arg(tag).arg(QDateTime::currentMSecsSinceEpoch()));
@@ -328,8 +344,13 @@ QString findModDir(const QString &root)
 
 namespace QolService {
 
+namespace { bool g_ignoreRunningGame = false; }
+void ignoreRunningGameForSelftest() { g_ignoreRunningGame = true; }
+
 QString runningGame()
 {
+    if (g_ignoreRunningGame)
+        return QString();
     // A running Plutonium game holds mod.iwd and the sound banks open, so any
     // install into storage would fail half-way. Same guard the 1.x app had.
     static const char *const kNames[] = {"plutonium-bootstrapper-win32.exe", "t6zm.exe", "t6mp.exe",
@@ -418,6 +439,13 @@ bool installMod(const AppSettings &s, const SeriesMod &m, const Progress &p, QSt
         error = QObject::tr("Close Plutonium first (%1 is running). The game keeps the mod files open while it runs.").arg(g);
         return false;
     }
+    // A saved 16x MSAA stops the game at a black screen as the mod loads; old
+    // builds of the mod wrote it. Take it out before anything else.
+    QolBackups::repairAaSamples(s);
+    // The mod install overwrites only our own files, so nothing is required;
+    // this is the "installed my mod, everything of theirs got copied" step.
+    if (!backupFirst(s, {}, p, error))
+        return false;
     if (p) p(QObject::tr("Looking up the latest release..."), 2);
     const QJsonArray rels = githubReleases(m.repo, error);
     if (rels.isEmpty())
@@ -490,6 +518,8 @@ bool installPack(const AppSettings &s, Pack pack, const Progress &p, QString &er
         error = QObject::tr("Close Plutonium first (%1 is running). The game keeps the mod files open while it runs.").arg(g);
         return false;
     }
+    if (!backupFirst(s, {packKind(pack)}, p, error))
+        return false;
     const SeriesMod t6 = seriesFor(QStringLiteral("t6"));
     if (p) p(QObject::tr("Looking up the latest release..."), 2);
     const QJsonArray rels = githubReleases(t6.repo, error);
@@ -545,6 +575,8 @@ bool installController(const AppSettings &s, const QString &pack, const Progress
     const QString folderName = pack == QLatin1String("ps5")    ? QStringLiteral("Dualsense Icons")
                              : pack == QLatin1String("switch") ? QStringLiteral("Nintendo Switch Icons")
                                                                : QStringLiteral("Xbox One Buttons");
+    if (!backupFirst(s, {QStringLiteral("controller")}, p, error))
+        return false;
     // Cached per pack under the state folder so switching packs is offline after the first download.
     const QString cache = QDir(stateDir(s)).filePath(QStringLiteral("controller-packs"));
     QString src;
@@ -637,16 +669,14 @@ bool installReShade(const AppSettings &s, QString &error)
         error = QObject::tr("Plutonium's bin folder was not found under %1.").arg(QDir::toNativeSeparators(s.plutoniumInstance));
         return false;
     }
-    // One-time backup of whatever ReShade files were there before us.
-    const QString backup = QDir(t6Storage(s)).filePath(QStringLiteral("backups/reshade"));
-    if (!QDir(backup).exists()) {
-        QDir().mkpath(backup);
-        for (const QString &f : kReShadeFiles) {
-            const QString from = QDir(bin).filePath(f);
-            if (QFileInfo::exists(from))
-                QFile::copy(from, QDir(backup).filePath(f));
-        }
-    }
+    // Whatever ReShade setup was there before us: the runtime, every preset
+    // (including ones saved under the player's own names) and the shader
+    // folder. This can run from a Play click, so only ReShade is copied here,
+    // never the other kinds; and it is taken whatever the backup setting says,
+    // because this app has always kept this one.
+    if (QolBackups::backup(s, QStringLiteral("reshade"), false, {}, error) == QolBackups::Result::Failed)
+        return false;
+    error.clear();
     QStringList written;
     const QString vault = reShadeVault(s);
     // Only the seven loose files are rewritten. The vault also holds the

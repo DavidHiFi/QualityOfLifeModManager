@@ -39,6 +39,9 @@ public:
     // which pins any game to a flat 30.0 with the GPU idle and looks exactly
     // like a pipeline stall. Measure with the game in front, or not at all.
     bool launchDlss5 = false;
+    // Every Quality of Life install first copies the player's own files into
+    // storage\t6\backups, the way qol-installer.ps1 did. On unless turned off.
+    bool backupBeforeInstall = true;
 
     QString modId;
     QString gameId;

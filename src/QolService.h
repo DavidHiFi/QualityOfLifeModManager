@@ -21,6 +21,9 @@ namespace QolService
     };
     // Name of a running Plutonium game process, or empty. Installs refuse while one runs.
     QString runningGame();
+    // -selftest only. Its checks run on scratch roots no game can be using,
+    // and every one of them failed whenever any Plutonium game was open.
+    void ignoreRunningGameForSelftest();
 
     QList<SeriesMod> series();
     SeriesMod seriesFor(const QString &gameCode);

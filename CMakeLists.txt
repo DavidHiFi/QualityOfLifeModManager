@@ -47,6 +47,7 @@ set(SOURCES
     src/UpdateService.cpp
     src/SelfUpdate.cpp
     src/QolService.cpp
+    src/QolBackups.cpp
     src/pages/QolPage.cpp
 )
 
@@ -85,6 +86,7 @@ set(HEADERS
     src/pages/HomePage.h
     src/UpdateService.h
     src/QolService.h
+    src/QolBackups.h
     src/pages/QolPage.h
 )
 

@@ -671,6 +671,7 @@ void HomePage::buildUi()
     barLayout->addWidget(m_search);
 
     m_filterBar = new QWidget(bar);
+    m_filterBar->setObjectName("HomeFilters");
     m_filterLayout = new QHBoxLayout(m_filterBar);
     m_filterLayout->setContentsMargins(0, 0, 0, 0);
     m_filterLayout->setSpacing(6);

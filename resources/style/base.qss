@@ -527,8 +527,15 @@ QLabel#DialogIcon { padding-right: 6px; }
         stop:0 @HEADER_TOP@, stop:1 @HEADER_BOT@);
     border-bottom: 1px solid @LINE_SOFT@;
 }
+/* The row that holds the chips. Every plain QWidget paints @BG@, so this one
+   drew a flat, square-cornered block over the bar's gradient: a box around
+   the chips that matched nothing else. It lets the bar show through instead. */
+#HomeFilters { background: transparent; }
 
 /* --- filtros por jogo --- */
+/* The selected chip keeps the same weight as the rest. Bold is wider than the
+   chip was sized for, so "World at War" and "Modern Warfare 3" lost a letter
+   off each end; colour and border already say which one is picked. */
 QPushButton#GameChip {
     background: transparent;
     border: 1px solid @LINE@;
@@ -542,7 +549,6 @@ QPushButton#GameChip:checked {
     background-color: @TINT1@;
     border: 1px solid @ACCENT@;
     color: @ON_SELECT@;
-    font-weight: 600;
 }
 
 /* --- slider de destaques --- */

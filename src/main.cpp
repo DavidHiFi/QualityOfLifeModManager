@@ -10,8 +10,13 @@
 #include "HomeCatalog.h"
 #include "VersionCompare.h"
 
+#include <QAbstractButton>
 #include <QApplication>
 #include <QGuiApplication>
+#include <QLabel>
+#include <QMessageBox>
+#include <QPushButton>
+#include <memory>
 #include <QCommandLineOption>
 #include <QCommandLineParser>
 #include <QDir>
@@ -143,6 +148,128 @@ int runNoGui(AppSettings &settings, const QCommandLineParser &parser)
     out << QOL_APP_NAME ": started " << settings.modeId << (online ? " online" : " on LAN")
         << ", pid " << result.pid << Qt::endl;
     return 0;
+}
+
+// The scripted click-through behind QOL_UITEST. It presses real buttons on
+// the Quality of Life page and answers each question box from a queue, so the
+// page's own wiring is what gets tested, not a copy of it.
+void runUiTest(MainWindow &window, const QString &logPath)
+{
+    auto *log = new QFile(logPath, &window);
+    log->open(QIODevice::WriteOnly | QIODevice::Truncate | QIODevice::Text);
+    auto say = [log](const QString &line) {
+        log->write((line + QLatin1Char('\n')).toUtf8());
+        log->flush();
+    };
+    auto answers = std::make_shared<QStringList>(
+        qEnvironmentVariable("QOL_UITEST_ANSWERS").split(QLatin1Char(','), Qt::SkipEmptyParts));
+
+    // Question boxes: press the next scripted answer by its text.
+    auto *poll = new QTimer(&window);
+    poll->setInterval(150);
+    QObject::connect(poll, &QTimer::timeout, &window, [answers, say]() {
+        for (QWidget *w : QApplication::topLevelWidgets()) {
+            auto *box = qobject_cast<QMessageBox *>(w);
+            if (!box || !box->isVisible())
+                continue;
+            const QString want = answers->isEmpty() ? QString() : answers->first();
+            for (QAbstractButton *b : box->buttons()) {
+                const QString text = b->text().remove(QLatin1Char('&'));
+                if (!want.isEmpty() && text == want) {
+                    say(QStringLiteral("box \"%1\" -> %2").arg(box->text().left(70).simplified(), want));
+                    answers->removeFirst();
+                    b->click();
+                    return;
+                }
+            }
+            // A box the script did not expect: note it and press its only
+            // button when there is one (an OK), otherwise cancel.
+            say(QStringLiteral("box \"%1\" -> no scripted answer, closing").arg(box->text().left(70).simplified()));
+            if (box->buttons().size() == 1)
+                box->buttons().first()->click();
+            else
+                box->reject();
+            return;
+        }
+    });
+    poll->start();
+
+    // Steps: "click:<button text>@<row title>" presses a button on the card
+    // whose title matches; "wait:<ms>" waits; "shot:<png>" saves the window.
+    const QStringList steps = qEnvironmentVariable("QOL_UITEST_STEPS").split(QLatin1Char(';'), Qt::SkipEmptyParts);
+    auto next = std::make_shared<std::function<void(int)>>();
+    *next = [&window, steps, say, next](int i) {
+        if (i >= steps.size()) {
+            say(QStringLiteral("done"));
+            QApplication::quit();
+            return;
+        }
+        const QString step = steps[i].trimmed();
+        int delay = 300;
+        if (step.startsWith(QLatin1String("page:"))) {
+            window.debugShowPage(step.mid(5).toInt());
+            say(QStringLiteral("page ") + step.mid(5));
+        } else if (step.startsWith(QLatin1String("wait:"))) {
+            delay = step.mid(5).toInt();
+        } else if (step.startsWith(QLatin1String("shot:"))) {
+            window.grab().save(step.mid(5));
+            say(QStringLiteral("shot ") + step.mid(5));
+        } else if (step.startsWith(QLatin1String("widget:"))) {
+            // widget:<objectName>=<png> - one widget at 2x, for close checks.
+            const QString name = step.mid(7).section(QLatin1Char('='), 0, 0);
+            if (QWidget *w = window.findChild<QWidget *>(name)) {
+                const QPixmap px = w->grab();
+                px.scaled(px.size() * 2, Qt::IgnoreAspectRatio, Qt::FastTransformation)
+                    .save(step.mid(7).section(QLatin1Char('='), 1));
+                say(QStringLiteral("widget ") + name);
+            } else {
+                say(QStringLiteral("widget %1: NOT FOUND").arg(name));
+            }
+        } else if (step.startsWith(QLatin1String("button:"))) {
+            // button:<text> - the first visible button with that text, anywhere.
+            bool pressed = false;
+            for (QPushButton *b : window.findChildren<QPushButton *>())
+                if (b->isVisible() && b->text().remove(QLatin1Char('&')) == step.mid(7)) {
+                    say(QStringLiteral("button %1").arg(step.mid(7)));
+                    QTimer::singleShot(0, b, &QPushButton::click);
+                    pressed = true;
+                    break;
+                }
+            if (!pressed)
+                say(QStringLiteral("button %1: NOT FOUND").arg(step.mid(7)));
+        } else if (step.startsWith(QLatin1String("status:"))) {
+            // status:<row title> - log the status line under that card.
+            for (QLabel *t : window.findChildren<QLabel *>(QStringLiteral("CardTitle")))
+                if (t->text() == step.mid(7) && t->parentWidget())
+                    for (QLabel *s : t->parentWidget()->findChildren<QLabel *>(QStringLiteral("ModCardMeta")))
+                        say(QStringLiteral("status %1: %2").arg(t->text(), s->text()));
+        } else if (step.startsWith(QLatin1String("click:"))) {
+            const QString what = step.mid(6).section(QLatin1Char('@'), 0, 0);
+            const QString row = step.mid(6).section(QLatin1Char('@'), 1);
+            bool pressed = false;
+            for (QLabel *t : window.findChildren<QLabel *>(QStringLiteral("CardTitle"))) {
+                if (t->text() != row || !t->parentWidget())
+                    continue;
+                for (QPushButton *b : t->parentWidget()->findChildren<QPushButton *>()) {
+                    if (b->text() != what)
+                        continue;
+                    say(QStringLiteral("click %1 @ %2 (%3)").arg(what, row, b->isEnabled() ? "enabled" : "DISABLED"));
+                    if (b->isEnabled() && b->isVisible()) {
+                        // Queued, so a modal box this opens does not block the script.
+                        QTimer::singleShot(0, b, &QPushButton::click);
+                        pressed = true;
+                    }
+                    break;
+                }
+                break;
+            }
+            if (!pressed)
+                say(QStringLiteral("click %1 @ %2: NOT PRESSED").arg(what, row));
+            delay = 600;
+        }
+        QTimer::singleShot(delay, &window, [next, i]() { (*next)(i + 1); });
+    };
+    QTimer::singleShot(800, &window, [next]() { (*next)(0); });
 }
 
 } // namespace
@@ -497,6 +624,13 @@ int main(int argc, char *argv[])
 
     MainWindow window;
     window.show();
+
+    // QOL_UITEST=<log>: drive the Backups section through the real window,
+    // pressing the same buttons a player would. Every question box is
+    // answered by the script from QOL_UITEST_ANSWERS (comma-separated button
+    // texts, in order). Meant for a throwaway root; the log lists each step.
+    if (qEnvironmentVariableIsSet("QOL_UITEST"))
+        runUiTest(window, qEnvironmentVariable("QOL_UITEST"));
 
     // Internal debug helper: dump a window screenshot when
     // QOL_SCREENSHOT=path.png is set (useful without an interactive display).

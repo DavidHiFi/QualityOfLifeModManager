@@ -420,6 +420,15 @@ void QolPage::removeWithRestore(const QString &title, const QString &question, c
     box.exec();
     if (box.clickedButton() != withRestore && box.clickedButton() != plain)
         return;
+    // The put-back refuses while a game is open, so ask first: removing and
+    // only then being told to close the game left the pack gone and nothing
+    // of the player's back in its place.
+    if (box.clickedButton() == withRestore) {
+        if (const QString g = QolService::runningGame(); !g.isEmpty()) {
+            QMessageBox::warning(this, title, tr("Close Plutonium first (%1 is running). Nothing was removed.").arg(g));
+            return;
+        }
+    }
     if (!remove(err)) {
         QMessageBox::warning(this, title, err);
         refresh();

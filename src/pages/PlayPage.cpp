@@ -20,6 +20,7 @@
 #include <QIcon>
 #include "../Theme.h"
 #include <QRadioButton>
+#include <QSignalBlocker>
 #include <QButtonGroup>
 #include <QStyle>
 #include <QResizeEvent>
@@ -282,6 +283,15 @@ void PlayPage::setGame(const QString &gameId)
     updateLaunchOptions();
     refreshArt();
     update();
+}
+
+void PlayPage::syncLaunchOptions()
+{
+    const QSignalBlocker reShadeBlock(m_reshade);
+    const QSignalBlocker dlssBlock(m_dlss5);
+    m_reshade->setChecked(m_settings.launchReShade);
+    m_dlss5->setChecked(m_settings.launchDlss5);
+    updateLaunchOptions();
 }
 
 void PlayPage::updateLaunchOptions()

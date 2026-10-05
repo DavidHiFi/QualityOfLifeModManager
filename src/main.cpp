@@ -133,12 +133,32 @@ int runNoGui(AppSettings &settings, const QCommandLineParser &parser)
 
     QTextStream out(stdout);
     const bool online = parser.isSet("online");
+    // -reshade / -dlss: the same preparation the Play button does for LAN.
+    // Online needs neither flag: launchOnline makes bin safe on its own.
+    if (!online && (parser.isSet("reshade") || parser.isSet("dlss"))) {
+        settings.launchReShade = true;
+        QString error;
+        const bool dlss = parser.isSet("dlss") && gameId == QLatin1String("T6");
+        if (!QolService::applyReShadeMode(settings, QolService::ReShadeMode::Lan, dlss, error)
+            || GameLauncher::startReShadeWatchdog(settings.plutoniumInstance, error) <= 0) {
+            out << QOL_APP_NAME ": " << error << Qt::endl;
+            return 1;
+        }
+    }
     const GameLauncher::Result result = online
                                             ? GameLauncher::launchOnline(settings)
                                             : GameLauncher::launch(settings, QString());
     if (result.hasError) {
+        // Nothing started, so nothing may keep the LAN files in bin.
+        if (!online && (parser.isSet("reshade") || parser.isSet("dlss"))) {
+            GameLauncher::stopReShadeWatchdog();
+            QString ignored;
+            QolService::leaveLanState(settings, ignored);
+        }
         if (!result.errorText.isEmpty())
             out << QOL_APP_NAME ": " << result.errorText << Qt::endl;
+        else if (result.errorMsg == Dialogs::Msg::Username)
+            out << QOL_APP_NAME ": no in-game name is set; pass -name <name>." << Qt::endl;
         else
             out << QOL_APP_NAME ": launch failed (check " QOL_INI_NAME " and the arguments)." << Qt::endl;
         if (result.needsLogin)
@@ -304,13 +324,72 @@ int main(int argc, char *argv[])
                                 "account) instead of LAN."});
     parser.addOption({"selftest", "Offline checks against -plutoniumdir (ReShade install/remove, watchdog unpack, "
                                   "online handler probe); prints one line per check and exits non-zero on failure."});
+    parser.addOption({"testdlss", "With -selftest: install the published DLSS 5 payload into a scratch Plutonium "
+                                  "root and check LAN, online, end of session, update and removal."});
+    parser.addOption({"leavelan", "Take the LAN-only ReShade build and DLSS 5 back out of bin, as the app does when a "
+                                  "LAN game closes. Uses -plutoniumdir when given."});
+    parser.addOption({"reshade", "With -nogui on LAN: put the add-on build of ReShade in place and start its watchdog."});
+    parser.addOption({"dlss", "With -nogui on LAN for T6: as -reshade, plus DLSS 5 (it must be installed)."});
     parser.addOption({"installcheck", "Check the installed Qt, MinGW, TLS and Windows graphics runtimes, then exit."});
     parser.addOption({"checkupdates", "Print what each component resolves to and what is pending, then exit. "
                                       "Shows whether a version came from the feed or from the component's own repo."});
+    parser.addOption({"checkdlss", "Print the published DLSS 5 payload version and this PC's installed version."});
+    parser.addOption({"installdlss", "Install or update DLSS 5 from the published release, without the GUI. "
+                                     "Uses -plutoniumdir when given."});
     parser.process(app);
 
     if (parser.isSet("installcheck"))
         return runInstallCheck();
+
+    if (parser.isSet("checkdlss")) {
+        AppSettings settings = AppSettings::loadForStartup();
+        if (parser.isSet("plutoniumdir"))
+            settings.plutoniumInstance = AppSettings::resolvePath(parser.value("plutoniumdir"));
+        QolService::DlssRelease release;
+        QString error;
+        if (!QolService::latestDlssRelease(release, error)) {
+            QTextStream(stdout) << "DLSS 5 release lookup failed: " << error << Qt::endl;
+            return 1;
+        }
+        QString unsafe;
+        const bool safe = QolService::onlineReShadeSafe(settings, unsafe);
+        QTextStream(stdout) << "DLSS 5 latest " << release.version
+                            << ", installed " << QolService::installedDlssVersion(settings)
+                            << ", asset " << release.size << " bytes" << Qt::endl
+                            << "bin is " << (safe ? QStringLiteral("safe for online play")
+                                                  : QStringLiteral("NOT safe for online play: ") + unsafe)
+                            << ", mode " << (QolService::activeReShadeMode(settings) == QolService::ReShadeMode::Lan
+                                                 ? "lan" : "online") << Qt::endl;
+        return 0;
+    }
+
+    if (parser.isSet("leavelan")) {
+        AppSettings settings = AppSettings::loadForStartup();
+        if (parser.isSet("plutoniumdir"))
+            settings.plutoniumInstance = AppSettings::resolvePath(parser.value("plutoniumdir"));
+        GameLauncher::stopReShadeWatchdog();
+        QString error;
+        const bool ok = QolService::leaveLanState(settings, error) && QolService::onlineReShadeSafe(settings, error);
+        QTextStream(stdout) << (ok ? QStringLiteral("bin is back to its online state.")
+                                   : QStringLiteral("bin is not clean: ") + error) << Qt::endl;
+        return ok ? 0 : 1;
+    }
+
+    if (parser.isSet("installdlss")) {
+        AppSettings settings = AppSettings::loadForStartup();
+        if (parser.isSet("plutoniumdir"))
+            settings.plutoniumInstance = AppSettings::resolvePath(parser.value("plutoniumdir"));
+        QTextStream out(stdout);
+        QolService::DlssRelease release;
+        QString error;
+        const bool ok = QolService::latestDlssRelease(release, error)
+                        && QolService::installDlssPayload(settings, release, [&out](const QString &t, int pct) {
+                               out << pct << "% " << t << Qt::endl;
+                           }, error);
+        out << (ok ? QStringLiteral("DLSS 5 %1 installed.").arg(release.version)
+                   : QStringLiteral("DLSS 5 install failed: %1").arg(error)) << Qt::endl;
+        return ok ? 0 : 1;
+    }
 
     if (parser.isSet("checkupdates")) {
         AppSettings settings = AppSettings::loadForStartup();
@@ -383,6 +462,9 @@ int main(int argc, char *argv[])
         // install silently uninstalled that user's ReShade.
         AppSettings rs = settings;
         rs.plutoniumInstance = QDir(QDir::tempPath()).filePath(QStringLiteral("qol-selftest-reshade"));
+        // Nothing can hold the scratch root open, so a real game running on
+        // this PC must not make every install check refuse.
+        qputenv("QOL_SELFTEST_SCRATCH", "1");
         QDir(rs.plutoniumInstance).removeRecursively();
         QDir().mkpath(QDir(rs.plutoniumInstance).filePath(QStringLiteral("bin")));
         check("reshade install", QolService::installReShade(rs, err), err);
@@ -430,7 +512,76 @@ int main(int argc, char *argv[])
             // An unticked box asks for gone, not for "the other build".
             check("reshade absent on request", QolService::ensureReShadeAbsent(rs, e), e);
             check("reshade really gone", !QolService::reShadeInstalled(rs));
-            check("dlss payload absent without an import", !QolService::dlssPayloadReady(rs));
+            check("dlss payload absent before install", !QolService::dlssPayloadReady(rs));
+            if (parser.isSet("testdlss")) {
+                QolService::DlssRelease release;
+                e.clear();
+                const bool found = QolService::latestDlssRelease(release, e);
+                check("dlss release found", found, e);
+                if (found) {
+                    const QString bin = QDir(rs.plutoniumInstance).filePath(QStringLiteral("bin"));
+                    const auto inBin = [&](const char *rel) { return QFileInfo::exists(QDir(bin).filePath(QLatin1String(rel))); };
+                    note("dlss release", release.version + QStringLiteral(", ") + QString::number(release.size) + QStringLiteral(" bytes"));
+                    // A clean PC: no ReShade, no shader pack, nothing in bin.
+                    e.clear();
+                    check("dlss managed install", QolService::installDlssPayload(rs, release, {}, e), e);
+                    check("dlss installed version", QolService::installedDlssVersion(rs) == release.version,
+                          QolService::installedDlssVersion(rs));
+                    check("dlss payload complete", QolService::dlssPayloadReady(rs));
+                    check("dlss install leaves bin clean", !inBin("dlss5-feed.addon32") && !inBin("host64"));
+                    e.clear();
+                    check("dlss lan applied", QolService::applyReShadeMode(rs, QolService::ReShadeMode::Lan, true, e), e);
+                    check("dlss lan is the add-on build", QolService::addonReShadeActive(rs));
+                    check("dlss add-on in lan bin", inBin("dlss5-feed.addon32"));
+                    check("dlss helper in lan bin", inBin("host64/dlss5-feed-host64.exe") && inBin("host64/d3d12.dll") && !inBin("host64/dxgi.dll") && inBin("host64/nvngx_dlssnr.dll")
+                                                    && inBin("host64/nvngx_dlss.dll") && inBin("host64/vcruntime140_1.dll"));
+                    // Everything the two shaders include, on a PC with no pack.
+                    check("dlss shaders compile on a clean pc",
+                          inBin("reshade-shaders/Shaders/ReShade.fxh")
+                              && inBin("reshade-shaders/Shaders/LumeniteFX/lumenite_Kernel.fx")
+                              && inBin("reshade-shaders/Shaders/LumeniteFX/include/lumenite_Projections.fxh")
+                              && inBin("reshade-shaders/Shaders/LumeniteFX/include/lumenite_Helpers.fxh")
+                              && inBin("reshade-shaders/Shaders/LumeniteFX/include/lumenite_Compute.fxh"));
+                    check("dlss marker lan-dlss", QolService::activeReShadeMode(rs) == QolService::ReShadeMode::Lan);
+                    {
+                        QFile cfg(QDir(bin).filePath(QStringLiteral("dlss5-feed.cfg")));
+                        check("dlss feeder enabled for lan",
+                              cfg.open(QIODevice::ReadOnly) && cfg.readAll().contains("enabled=1"));
+                    }
+                    e.clear();
+                    check("dlss unsafe online before switch", !QolService::onlineReShadeSafe(rs, e));
+                    // A stray add-on dropped by another tool must not ride online.
+                    {
+                        QFile stray(QDir(bin).filePath(QStringLiteral("stray-test.addon32")));
+                        stray.open(QIODevice::WriteOnly);
+                        stray.write("x");
+                    }
+                    e.clear();
+                    check("dlss online switch", QolService::applyReShadeMode(rs, QolService::ReShadeMode::Online, false, e), e);
+                    e.clear();
+                    check("dlss clean online bin", QolService::onlineReShadeSafe(rs, e), e);
+                    check("dlss online is the stock build", QolService::reShadeInstalled(rs) && !QolService::addonReShadeActive(rs));
+                    check("dlss stray add-on parked", !inBin("stray-test.addon32"));
+                    check("dlss kept for next lan", QolService::dlssPayloadReady(rs));
+                    // LAN again, then a LAN session ends: bin must go back.
+                    e.clear();
+                    check("dlss lan again", QolService::applyReShadeMode(rs, QolService::ReShadeMode::Lan, true, e), e);
+                    e.clear();
+                    check("dlss leave lan after session", QolService::leaveLanState(rs, e), e);
+                    e.clear();
+                    check("dlss bin clean after lan session", QolService::onlineReShadeSafe(rs, e), e);
+                    // Re-installing the same release is an update in place.
+                    e.clear();
+                    check("dlss update in place", QolService::installDlssPayload(rs, release, {}, e), e);
+                    check("dlss still complete after update", QolService::dlssPayloadReady(rs));
+                    e.clear();
+                    check("dlss one-click removal", QolService::removeDlssPayload(rs, e), e);
+                    check("dlss removed", !QolService::dlssPayloadReady(rs)
+                                              && !QDir(QolService::reShadeLanVault(rs)).exists());
+                    e.clear();
+                    check("dlss bin clean after removal", QolService::onlineReShadeSafe(rs, e), e);
+                }
+            }
         }
         const qint64 wd = GameLauncher::startReShadeWatchdog(rs.plutoniumInstance, err);
         check("watchdog started", wd > 0, err);

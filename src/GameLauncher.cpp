@@ -1,6 +1,7 @@
 #include "GameLauncher.h"
 #include "AppSettings.h"
 #include "PlutoniumAuth.h"
+#include "QolService.h"
 #include "SmartModInstaller.h"
 #include "Storage.h"
 
@@ -265,6 +266,18 @@ Result launchOnline(AppSettings &settings)
         r.errorText = error.isEmpty()
                           ? QObject::tr("Plutonium would not start an online session.")
                           : error;
+        return r;
+    }
+
+    // This is the final gate for both the GUI and -nogui launch paths. An
+    // online process must never start while the LAN add-on or helper is in bin.
+    stopReShadeWatchdog();
+    const bool prepared = settings.launchReShade
+        ? QolService::applyReShadeMode(settings, QolService::ReShadeMode::Online, false, error)
+        : QolService::ensureReShadeAbsent(settings, error);
+    if (!prepared || !QolService::onlineReShadeSafe(settings, error)) {
+        r.hasError = true;
+        r.errorText = error;
         return r;
     }
 

@@ -42,8 +42,10 @@ private:
 
     // ReShade for the session about to start: the right build in bin, or
     // none at all when the box is unticked.
-    void prepareReShade(QolService::ReShadeMode mode, bool wantDlss);
-    void startReShadeWatchdogIfWanted();
+    bool prepareReShade(QolService::ReShadeMode mode, bool wantDlss);
+    bool startReShadeWatchdogIfWanted();
+    // A game this app started has closed: take LAN-only files back out of bin.
+    void afterSessionEnded(int attempt = 0);
 
     QWidget *buildSidebar();
     QWidget *buildHeader();

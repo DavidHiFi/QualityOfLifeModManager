@@ -18,6 +18,7 @@ public:
     void setGame(const QString &gameId);
     QString currentGameId() const { return m_gameId; }
     void setRunning(bool running);
+    void syncLaunchOptions();
     void setSelectedMod(const QString &mod) { m_selectedMod = mod; updateLaunchOptions(); }
     bool isMultiplayer() const;
     QString selectedMode() const;

@@ -2,6 +2,7 @@
 #include <QWidget>
 #include <QList>
 #include <functional>
+#include "../QolService.h"
 
 class QLabel;
 class QPushButton;
@@ -36,7 +37,8 @@ private:
     };
     Row addRow(QVBoxLayout *into, const QString &kicker, const QString &title, const QString &desc);
     void runJob(const QString &title, const std::function<bool(QString &, const std::function<void(const QString &, int)> &)> &job,
-                const std::function<void()> &after = {});
+                const std::function<void()> &after = {},
+                const std::function<void(bool)> &finished = {});
     bool confirm(const QString &title, const QString &text);
     void openUrl(const QString &url);
     // Remove a pack, then offer the player's own files back when a backup of
@@ -56,4 +58,6 @@ private:
     QPushButton *m_backupOpen = nullptr;
     class QCheckBox *m_backupAuto = nullptr;
     QStringList m_latest;     // cached latest tags, parallel to series()
+    QolService::DlssRelease m_dlssRelease;
+    bool m_dlssCheckStarted = false;
 };

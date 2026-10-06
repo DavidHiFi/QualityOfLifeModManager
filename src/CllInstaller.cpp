@@ -2,6 +2,7 @@
 #include "ArchiveTool.h"
 #include "GameCatalog.h"
 #include "SmartModInstaller.h"
+#include "Theme.h"
 
 #include <QDateTime>
 #include <QDialog>
@@ -279,27 +280,27 @@ bool confirmAndShow(QWidget *parent, const Manifest &man,
     dlg.setModal(true);
     dlg.setMinimumSize(560, 460);
     dlg.resize(640, 520);
-    dlg.setStyleSheet(
-        "QDialog { background: #161821; }"
-        "QLabel { color: #e8e6f2; }"
-        "QLabel#CllKicker { color: #9184d9; font-size: 11px; font-weight: 700; letter-spacing: 1.4px; }"
-        "QLabel#CllTitle { color: #f4f2ff; font-size: 20px; font-weight: 700; }"
-        "QLabel#CllMeta { color: #8a8ba3; font-size: 12px; }"
-        "QLabel#CllChip { background: #242636; color: #d9d6ea; border-radius: 11px; padding: 4px 10px; font-size: 11px; }"
-        "QLabel#CllChipAccent { background: #9184d9; color: #14121f; border-radius: 11px; padding: 4px 10px; font-size: 11px; font-weight: 700; }"
-        "QPushButton#CllMore { background: #242636; color: #d9d6ea; border: 1px solid #2b2e42; }"
-        "QPushButton#CllMore:hover { background: #2b2e42; }"
-        "QFrame#CllCard { background: #1c1e2b; border: 1px solid #2b2e42; border-radius: 10px; }"
-        "QLabel#CllDestFrom { color: #c8c6d8; font-size: 12px; }"
-        "QLabel#CllDestTo { color: #9184d9; font-size: 11px; font-weight: 600; }"
-        "QTextEdit { background: #12131c; color: #d7d5e6; border: 1px solid #2b2e42; border-radius: 8px; padding: 8px; }"
-        "QCheckBox { color: #d7d5e6; }"
+    dlg.setStyleSheet(Theme::expandTokens(QStringLiteral(
+        "QDialog { background: @BG@; }"
+        "QLabel { color: @TEXT@; }"
+        "QLabel#CllKicker { color: @ACCENT@; font-size: 11px; font-weight: 700; letter-spacing: 1.4px; }"
+        "QLabel#CllTitle { color: @TEXT_STRONG@; font-size: 20px; font-weight: 700; }"
+        "QLabel#CllMeta { color: @TEXT_DIM@; font-size: 12px; }"
+        "QLabel#CllChip { background: @SURFACE@; color: @TEXT@; border-radius: 11px; padding: 4px 10px; font-size: 11px; }"
+        "QLabel#CllChipAccent { background: @ACCENT@; color: @ACCENT_TEXT@; border-radius: 11px; padding: 4px 10px; font-size: 11px; font-weight: 700; }"
+        "QPushButton#CllMore { background: @SURFACE@; color: @TEXT@; border: 1px solid @LINE@; }"
+        "QPushButton#CllMore:hover { background: @LINE@; }"
+        "QFrame#CllCard { background: @SURFACE_2@; border: 1px solid @LINE@; border-radius: 10px; }"
+        "QLabel#CllDestFrom { color: @TEXT@; font-size: 12px; }"
+        "QLabel#CllDestTo { color: @ACCENT@; font-size: 11px; font-weight: 600; }"
+        "QTextEdit { background: @FIELD@; color: @TEXT@; border: 1px solid @LINE@; border-radius: 8px; padding: 8px; }"
+        "QCheckBox { color: @TEXT@; }"
         "QPushButton { min-height: 34px; padding: 0 16px; border-radius: 8px; }"
-        "QPushButton#CllCancel { background: #242636; color: #d9d6ea; border: 1px solid #2b2e42; }"
-        "QPushButton#CllCancel:hover { background: #2b2e42; }"
-        "QPushButton#CllInstall { background: #9184d9; color: #14121f; font-weight: 700; border: none; }"
-        "QPushButton#CllInstall:hover { background: #7a6cc9; }"
-        "QScrollArea { border: none; background: transparent; }");
+        "QPushButton#CllCancel { background: @SURFACE@; color: @TEXT@; border: 1px solid @LINE@; }"
+        "QPushButton#CllCancel:hover { background: @LINE@; }"
+        "QPushButton#CllInstall { background: @ACCENT@; color: @ACCENT_TEXT@; font-weight: 700; border: none; }"
+        "QPushButton#CllInstall:hover { background: @ACCENT_DARK@; }"
+        "QScrollArea { border: none; background: transparent; }")));
 
     auto *root = new QVBoxLayout(&dlg);
     root->setContentsMargins(22, 20, 22, 18);
@@ -316,7 +317,8 @@ bool confirmAndShow(QWidget *parent, const Manifest &man,
     } else {
         icon->setText(man.gameCode.toUpper());
         icon->setAlignment(Qt::AlignCenter);
-        icon->setStyleSheet("background:#242636; border-radius:12px; color:#9184d9; font-weight:700;");
+        icon->setStyleSheet(Theme::expandTokens(QStringLiteral(
+            "background:@SURFACE@; border-radius:12px; color:@ACCENT@; font-weight:700;")));
     }
     hero->addWidget(icon, 0, Qt::AlignTop);
 
@@ -485,11 +487,12 @@ bool confirmAndShow(QWidget *parent, const Manifest &man,
                                         + (diskLow ? QStringLiteral(" — ") + QObject::tr("Disk almost full!")
                                                    : QString()), card);
         if (diskLow)
-            diskName->setStyleSheet("color:#e45b5b; font-weight:700;");
+            diskName->setStyleSheet(Theme::expandTokens(QStringLiteral("color:@DANGER_TEXT@; font-weight:700;")));
         vl->addWidget(diskName);
         auto *barHost = new QWidget(card);
         barHost->setFixedHeight(16);
-        barHost->setStyleSheet("background:#12131c; border:1px solid #2b2e42; border-radius:6px;");
+        barHost->setStyleSheet(Theme::expandTokens(QStringLiteral(
+            "background:@FIELD@; border:1px solid @LINE@; border-radius:6px;")));
         auto *barLay = new QHBoxLayout(barHost);
         barLay->setContentsMargins(1, 1, 1, 1);
         barLay->setSpacing(0);
@@ -505,10 +508,10 @@ bool confirmAndShow(QWidget *parent, const Manifest &man,
         }
         auto *usedChunk = new QFrame(barHost);
         usedChunk->setStyleSheet(diskLow
-                                    ? "background:#c23b3b; border:none; border-top-left-radius:5px; border-bottom-left-radius:5px; border-top-right-radius:0; border-bottom-right-radius:0;"
-                                    : "background:#5c5e78; border:none; border-top-left-radius:5px; border-bottom-left-radius:5px; border-top-right-radius:0; border-bottom-right-radius:0;");
+                                    ? Theme::expandTokens(QStringLiteral("background:@DANGER_LINE@; border:none; border-top-left-radius:5px; border-bottom-left-radius:5px; border-top-right-radius:0; border-bottom-right-radius:0;"))
+                                    : Theme::expandTokens(QStringLiteral("background:@BTN@; border:none; border-top-left-radius:5px; border-bottom-left-radius:5px; border-top-right-radius:0; border-bottom-right-radius:0;")));
         auto *modChunk = new QFrame(barHost);
-        modChunk->setStyleSheet("background:#e89a3a; border:none; border-top-left-radius:0; border-bottom-left-radius:0; border-top-right-radius:5px; border-bottom-right-radius:5px;");
+        modChunk->setStyleSheet(Theme::expandTokens(QStringLiteral("background:@ACCENT@; border:none; border-top-left-radius:0; border-bottom-left-radius:0; border-top-right-radius:5px; border-bottom-right-radius:5px;")));
         barLay->addWidget(usedChunk, qMax(1, usedPct));
         barLay->addWidget(modChunk, qMax(2, modPct));
         barLay->addStretch(qMax(1, 100 - usedPct - modPct));
@@ -517,7 +520,7 @@ bool confirmAndShow(QWidget *parent, const Manifest &man,
         diskTxt->setTextFormat(Qt::RichText);
         diskTxt->setText(QObject::tr("Livre %1 de %2").arg(fmtBytes(available), fmtBytes(total))
                          + QStringLiteral("<br>")
-                         + QStringLiteral("<span style='color:#e89a3a'>%1 %2</span>  ·  <span style='color:#e89a3a'>%3 ~%4</span>")
+                         + Theme::expandTokens(QStringLiteral("<span style='color:@ACCENT@'>%1 %2</span>  ·  <span style='color:@ACCENT@'>%3 ~%4</span>"))
                                .arg(QObject::tr("Mod"), fmtBytes(d.payload),
                                     QObject::tr("backup"), fmtBytes(d.payload / 4)));
         vl->addWidget(diskTxt);

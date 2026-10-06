@@ -30,6 +30,9 @@ namespace Theme
     QString line();        // linhas e bordas
     QString token(const QString &name); // qualquer token da paleta atual
     QColor color(const QString &name);   // token como QColor
+    // Substitui os @TOKEN@ de uma folha de estilo avulsa (diálogos com QSS
+    // próprio) pela paleta do tema atual. Tokens mais longos primeiro.
+    QString expandTokens(const QString &qss);
     int radius();                        // 8 (Nocturne) ou 0 (Classic Things)
     bool isSquare();                     // true nos temas Classic Things
     // Icone monocromatico recolorido com a cor de icone do tema.

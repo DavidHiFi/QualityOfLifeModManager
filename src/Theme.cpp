@@ -957,6 +957,19 @@ QString accentText() { return token(QStringLiteral("ACCENT_TEXT")); }
 QString muted()      { return token(QStringLiteral("TEXT_DIM")); }
 QString line()       { return token(QStringLiteral("LINE")); }
 
+QString expandTokens(const QString &qss)
+{
+    QString out = qss;
+    // Tokens mais longos primeiro: @ACCENT_DARK@ antes de @ACCENT@.
+    QStringList keys = g_palette.keys();
+    std::sort(keys.begin(), keys.end(), [](const QString &a, const QString &b) {
+        return a.size() > b.size();
+    });
+    for (const QString &name : keys)
+        out.replace(QLatin1Char('@') + name + QLatin1Char('@'), g_palette.value(name));
+    return out;
+}
+
 QStringList names()
 {
     QStringList out;
@@ -1004,16 +1017,8 @@ void apply(const QString &themeKey)
         return;
     QString qss = QTextStream(&file).readAll();
 
-    // Tokens mais longos primeiro: @ACCENT_DARK@ antes de @ACCENT@.
-    QStringList keys = g_palette.keys();
-    std::sort(keys.begin(), keys.end(), [](const QString &a, const QString &b) {
-        return a.size() > b.size();
-    });
-    for (const QString &name : keys)
-        qss.replace(QLatin1Char('@') + name + QLatin1Char('@'), g_palette.value(name));
-
     if (auto *app = qApp)
-        app->setStyleSheet(qss);
+        app->setStyleSheet(expandTokens(qss));
 
     emit ThemeHub::instance().themeChanged();
 }

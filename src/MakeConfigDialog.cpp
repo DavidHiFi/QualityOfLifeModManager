@@ -4,6 +4,7 @@
 #include "AppSettings.h"
 #include "ConfigMaker.h"
 #include "Dialogs.h"
+#include "Theme.h"
 
 #include <QButtonGroup>
 #include <QDialogButtonBox>
@@ -55,7 +56,7 @@ MakeConfigDialog::MakeConfigDialog(AppSettings &settings, const QString &serverI
     root->addWidget(scroll);
 
     auto *nameLabel = new QLabel(tr("Nome da config, sem sufixo ou prefixo\nEx.: DieRise"), this);
-    nameLabel->setStyleSheet("font-size:8.5pt; color:#9c9da4;");
+    nameLabel->setStyleSheet(QStringLiteral("font-size:8.5pt; color:%1;").arg(Theme::muted()));
     root->addWidget(nameLabel);
 
     m_nameEdit = new QLineEdit(this);
@@ -110,7 +111,7 @@ void MakeConfigDialog::buildWawMpMaps(QVBoxLayout *into)
     }
     m_radiosByKey["mpcastle"]->setChecked(true);
     auto *hint = new QLabel(tr("Digite o nome do mapa abaixo para mapas customizados\n(\"Outro\" deve estar selecionado)"), this);
-    hint->setStyleSheet("font-size:8pt; font-weight:600; color:#9c9da4;");
+    hint->setStyleSheet(QStringLiteral("font-size:8pt; font-weight:600; color:%1;").arg(Theme::muted()));
     into->addWidget(hint);
     if (!m_customMapEdit)
         m_customMapEdit = new QLineEdit(this);
@@ -162,7 +163,7 @@ void MakeConfigDialog::buildBo1MpMaps(QVBoxLayout *into)
     }
     m_radiosByKey["mpnuked"]->setChecked(true);
     auto *hint = new QLabel(tr("Digite o nome do mapa abaixo para mapas customizados\n(\"Outro\" deve estar selecionado)"), this);
-    hint->setStyleSheet("font-size:8pt; font-weight:600; color:#9c9da4;");
+    hint->setStyleSheet(QStringLiteral("font-size:8pt; font-weight:600; color:%1;").arg(Theme::muted()));
     into->addWidget(hint);
     if (!m_customMapEdit)
         m_customMapEdit = new QLineEdit(this);
@@ -209,7 +210,7 @@ void MakeConfigDialog::buildBo2MpMaps(QVBoxLayout *into)
     }
     m_radiosByKey["mphijacked"]->setChecked(true);
     auto *hint = new QLabel(tr("Digite o nome do mapa abaixo para mapas customizados\n(\"Outro\" deve estar selecionado)"), this);
-    hint->setStyleSheet("font-size:8pt; font-weight:600; color:#9c9da4;");
+    hint->setStyleSheet(QStringLiteral("font-size:8pt; font-weight:600; color:%1;").arg(Theme::muted()));
     into->addWidget(hint);
     if (!m_customMapEdit)
         m_customMapEdit = new QLineEdit(this);
@@ -237,7 +238,7 @@ void MakeConfigDialog::buildWawMaps(QVBoxLayout *into)
     m_radiosByKey["mapnacht"]->setChecked(true);
 
     auto *hint = new QLabel(tr("Digite o nome do mapa abaixo para mapas customizados\n(\"Outro\" deve estar selecionado)"), this);
-    hint->setStyleSheet("font-size:8pt; font-weight:600; color:#9c9da4;");
+    hint->setStyleSheet(QStringLiteral("font-size:8pt; font-weight:600; color:%1;").arg(Theme::muted()));
     into->addWidget(hint);
 
     m_customMapEdit = new QLineEdit(this);
@@ -270,7 +271,7 @@ void MakeConfigDialog::buildBo1Maps(QVBoxLayout *into)
     into->addWidget(other);
 
     auto *hint = new QLabel(tr("Digite o nome do mapa abaixo para mapas customizados\n(\"Outro\" deve estar selecionado)"), this);
-    hint->setStyleSheet("font-size:8pt; font-weight:600; color:#9c9da4;");
+    hint->setStyleSheet(QStringLiteral("font-size:8pt; font-weight:600; color:%1;").arg(Theme::muted()));
     into->addWidget(hint);
     if (!m_customMapEdit)
         m_customMapEdit = new QLineEdit(this);

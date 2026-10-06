@@ -20,6 +20,7 @@
 #include <QRegularExpression>
 #include <QUrl>
 #include <QTextStream>
+#include <functional>
 
 namespace {
 
@@ -126,6 +127,19 @@ bool copyTree(const QString &src, const QString &dest, const QStringList &skipNa
     return true;
 }
 
+// Deletes a file, clearing a ReadOnly attribute first: shader packs unpacked
+// from zips often carry it, and QFile::remove refuses such a file outright.
+bool removeFileRobust(const QString &full)
+{
+    if (!QFile::remove(full)) {
+        QFile(full).setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner
+                                   | QFileDevice::ReadUser | QFileDevice::WriteUser
+                                   | QFileDevice::ReadOther | QFileDevice::WriteOther);
+        return QFile::remove(full);
+    }
+    return true;
+}
+
 // Deletes the files a manifest lists, then the manifest. Refuses paths that
 // escape the destination.
 bool removeManifest(const AppSettings &s, const QString &kind, const QString &dest, QString &error)
@@ -136,7 +150,7 @@ bool removeManifest(const AppSettings &s, const QString &kind, const QString &de
         const QString full = QDir::cleanPath(QDir(dest).filePath(rel));
         if (!full.startsWith(root + QLatin1Char('/'), Qt::CaseInsensitive))
             continue;
-        if (QFileInfo::exists(full) && !QFile::remove(full)) {
+        if (QFileInfo::exists(full) && !removeFileRobust(full)) {
             error = QObject::tr("Could not delete %1").arg(rel);
             return false;
         }
@@ -666,6 +680,37 @@ bool reShadeInstalled(const AppSettings &s)
     return QFileInfo::exists(QDir(s.plutoniumInstance).filePath(QStringLiteral("bin/dxgi.dll")));
 }
 
+// The embedded effect pack: every .fx the shipped presets enable, their .fxh
+// includes and the LUT texture, mirrored under <dest>\reshade-shaders. Files
+// already present are left alone - the player's own effects and in-place edits
+// are not ours to replace - so what was actually written is the only thing
+// recorded for removal. Returns false when an embedded file cannot be copied.
+bool copyEmbeddedReShadeShaders(const QString &dest, QStringList &written, QString &error)
+{
+    const QString root = QStringLiteral(":/reshade/reshade-shaders");
+    QDirIterator it(root, QDir::Files, QDirIterator::Subdirectories);
+    while (it.hasNext()) {
+        it.next();
+        const QString rel = QDir(root).relativeFilePath(it.filePath());
+        const QString to = QDir(dest).filePath(QStringLiteral("reshade-shaders/") + rel);
+        if (QFileInfo::exists(to))
+            continue;   // never overwrite: the vault is the player's source of truth
+        QDir().mkpath(QFileInfo(to).absolutePath());
+        if (!QFile::copy(it.filePath(), to)) {
+            error = QObject::tr("Could not write %1").arg(QDir::toNativeSeparators(to));
+            return false;
+        }
+        // QFile::copy carries the source's permissions over, and a resource is
+        // read-only: on NTFS the copy lands ReadOnly and Remove cannot delete
+        // it ("Could not delete reshade-shaders/.../AzenCommon.fxh").
+        QFile(to).setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner
+                                 | QFileDevice::ReadUser | QFileDevice::WriteUser
+                                 | QFileDevice::ReadOther | QFileDevice::WriteOther);
+        written << (QStringLiteral("reshade-shaders/") + rel);
+    }
+    return true;
+}
+
 bool installReShade(const AppSettings &s, QString &error)
 {
     if (const QString g = runningGame(); !g.isEmpty()) {
@@ -708,6 +753,16 @@ bool installReShade(const AppSettings &s, QString &error)
         }
         written << f;
     }
+    // The effects themselves. ReShade.ini points EffectSearchPaths at
+    // .\reshade-shaders\Shaders\** inside bin, so a fresh install shipped
+    // without them reads as "ReShade with no effects" - the runtime came up,
+    // the overlay worked, and the preset's techniques were all missing. Seed
+    // both bin (what ReShade reads) and the vault (what the watchdog restores
+    // from) with the pack; a PC that already has effects keeps every file it
+    // has, including anything the player added themselves.
+    for (const QString &dir : {bin, vault})
+        if (!copyEmbeddedReShadeShaders(dir, written, error))
+            return false;
     writeManifest(manifestPath(s, QStringLiteral("reshade")), written);
     return true;
 }
@@ -725,6 +780,29 @@ bool removeReShade(const AppSettings &s, QString &error)
     const QString bin = QDir(s.plutoniumInstance).filePath(QStringLiteral("bin"));
     if (!removeManifest(s, QStringLiteral("reshade"), bin, error))
         return false;
+    // The effect files the manifest listed leave empty directories behind.
+    // Prune only what is now completely empty, so anything the player added
+    // inside reshade-shaders keeps its place.
+    const QString shaderRoot = QDir::cleanPath(QDir(bin).filePath(QStringLiteral("reshade-shaders")));
+    if (QFileInfo::exists(shaderRoot)) {
+        std::function<bool(const QString &)> prune = [&](const QString &dirPath) -> bool {
+            QDir d(dirPath);
+            bool empty = true;
+            for (const QFileInfo &e :
+                 d.entryInfoList(QDir::Dirs | QDir::Files | QDir::NoDotAndDotDot)) {
+                if (e.isDir())
+                    empty = prune(e.absoluteFilePath()) && empty;
+                else
+                    empty = false;
+            }
+            if (empty && dirPath != shaderRoot)
+                QDir().rmdir(dirPath);
+            return empty;
+        };
+        prune(shaderRoot);
+        if (QDir(shaderRoot).isEmpty())
+            QDir().rmdir(shaderRoot);
+    }
     // The manifest only covers what this app installed. ReShade also arrives by
     // hand, from a Plutonium repair, or from a script that restores bin, and
     // then there is no manifest at all - which used to make Remove a silent
@@ -732,7 +810,7 @@ bool removeReShade(const AppSettings &s, QString &error)
     // from bin, so take the whole known set either way.
     for (const QString &f : kReShadeFiles) {
         const QString full = QDir(bin).filePath(f);
-        if (QFileInfo::exists(full) && !QFile::remove(full)) {
+        if (QFileInfo::exists(full) && !removeFileRobust(full)) {
             error = QObject::tr("Could not delete %1. Close Plutonium and any ReShade "
                                 "overlay, then try again.")
                         .arg(QDir::toNativeSeparators(full));

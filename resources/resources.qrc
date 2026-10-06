@@ -53,5 +53,26 @@
         <file>reshade/BO2.ini</file>
         <file>reshade/MW3.ini</file>
         <file>reshade/WAW.ini</file>
+        <file>reshade/reshade-shaders/Shaders/PD80_00_Color_Spaces.fxh</file>
+        <file>reshade/reshade-shaders/Shaders/PD80_00_Noise_Samplers.fxh</file>
+        <file>reshade/reshade-shaders/Shaders/ReShade.fxh</file>
+        <file>reshade/reshade-shaders/Shaders/ReShadeUI.fxh</file>
+        <file>reshade/reshade-shaders/Shaders/Azen/Azen_PreCorrect.fx</file>
+        <file>reshade/reshade-shaders/Shaders/Azen/AzenCommon.fxh</file>
+        <file>reshade/reshade-shaders/Shaders/BarbatosShaders/BaBa_PHDR.fx</file>
+        <file>reshade/reshade-shaders/Shaders/BarbatosShaders/BaBa_Sharpen_Neural.fx</file>
+        <file>reshade/reshade-shaders/Shaders/BarbatosShaders/BaBa_Sharpen_NIS.fx</file>
+        <file>reshade/reshade-shaders/Shaders/BarbatosShaders/Includes/bb_colorspace.fxh</file>
+        <file>reshade/reshade-shaders/Shaders/BarbatosShaders/Includes/bb_reshade.fxh</file>
+        <file>reshade/reshade-shaders/Shaders/BarbatosShaders/Includes/Sharpen_Neural/ModelAB_weights.fxh</file>
+        <file>reshade/reshade-shaders/Shaders/CrosireLegacy/FilmicPass.fx</file>
+        <file>reshade/reshade-shaders/Shaders/FGFX/FGFXLargeScalePerceptualObscuranceIrradiance.fx</file>
+        <file>reshade/reshade-shaders/Shaders/GShadeShaders/Clarity2.fx</file>
+        <file>reshade/reshade-shaders/Shaders/InsaneShaders/LocalContrastCS.fx</file>
+        <file>reshade/reshade-shaders/Shaders/PD80/PD80_LUT_v2.fxh</file>
+        <file>reshade/reshade-shaders/Shaders/Prod80/PD80_02_Bonus_LUT_pack.fx</file>
+        <file>reshade/reshade-shaders/Shaders/Prod80/PD80_03_Filmic_Adaptation.fx</file>
+        <file>reshade/reshade-shaders/Shaders/SweetFX/Levels.fx</file>
+        <file>reshade/reshade-shaders/Textures/PD80/pd80_example-lut.png</file>
     </qresource>
 </RCC>

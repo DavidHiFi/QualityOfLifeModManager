@@ -174,6 +174,36 @@ and `$VaultDir` in `resources/tools/reshade-watchdog.ps1` must agree
 The watchdog never overwrites a file that exists in `bin`; it only puts back what
 Plutonium deleted, and copies edited top-level `*.ini` back into the vault.
 
+**The embedded effect pack is the fix for "effect paths missing".** ReShade.ini
+points EffectSearchPaths at `.\reshade-shaders\Shaders\**`, but v2.2.3 shipped
+only the DLL and presets, so on every machine that did not already have a shader
+pack the presets loaded zero effects. The app now embeds the exact shader subset
+the presets enable in `resources/reshade/reshade-shaders/` (qrc) and
+`copyEmbeddedReShadeShaders()` seeds it, copy-if-missing, into `bin\reshade-shaders`
+and the vault on install; written paths are recorded in the manifest so Remove
+takes back only what we wrote. Rules:
+
+* The subset must match the presets. If a preset enables a new effect, regenerate
+  the pack (the closure builder from `modding-jobs\qol-manager-fix-001\gather_
+  reshade_subset.py` style: parse the preset's `Effects=` list, follow `#include`
+  and texture references transitively) and re-embed. A preset pointing at a
+  missing effect is the bug users saw; do not let it come back.
+* **Never re-host LumeniteFX in the embedded pack either.** Its AGNYA licence
+  forbids re-hosting; the DLSS payload fetches it from the author's URL instead.
+* Never overwrite a file that already exists on the player's disk — the pack is
+  copy-if-missing, so a player who upgraded their own shaders keeps theirs.
+
+**Dialog stylesheets follow the theme through `Theme::expandTokens()`.** The
+installer/preview dialogs (`CllInstaller`, `ModPreview`) and `MakeConfigDialog`
+used to hardcode the Nocturne palette (the BO3 progress bar stayed orange on
+every theme). Any dialog-local QSS must use `@TOKEN@` placeholders and be wrapped
+in `Theme::expandTokens(...)`; one-off inline colors use `Theme::token()` /
+`Theme::muted()`. The only fixed darks allowed are artwork-adjacent scrims that
+sit over covers and screenshots: the HomePage badge scrim, the PlayPage/HomePage
+hero gradients and edge pen, the GameCatalog placeholder fills, and the
+ModPreview `CompareOverlay` background — they must stay dark regardless of theme
+or text over artwork becomes unreadable in light themes.
+
 **DLSS 5 is a downloaded payload with its own release tag, and it never goes online.**
 The app reads `dlss5-manifest.json` from the `dlss5-stable` release (`QOL_DLSS_RELEASE_URL`),
 downloads the archive it names, checks the archive's size and sha256, then checks every

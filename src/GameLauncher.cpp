@@ -351,7 +351,19 @@ void killWatchdog(qint64 pid)
 
 qint64 runningReShadeWatchdog()
 {
-    return (g_watchdogPid > 0 && isPidRunning(g_watchdogPid)) ? g_watchdogPid : 0;
+    if (g_watchdogPid > 0 && isPidRunning(g_watchdogPid))
+        return g_watchdogPid;
+    // The watchdog writes its own pid on startup, so one started by an app
+    // instance that then crashed or was killed is still visible here - and
+    // still stoppable - instead of invisible until reboot.
+    QFile f(watchdogPidFile());
+    if (f.open(QIODevice::ReadOnly)) {
+        const qint64 pid = QString::fromUtf8(f.readAll()).trimmed().toLongLong();
+        f.close();
+        if (pid > 0 && isPidRunning(pid))
+            return pid;
+    }
+    return 0;
 }
 
 void stopReShadeWatchdog()

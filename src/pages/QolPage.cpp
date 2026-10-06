@@ -19,6 +19,7 @@
 #include <QPushButton>
 #include <QScrollArea>
 #include <QStyle>
+#include <QTimer>
 #include <QUrl>
 #include <QVBoxLayout>
 #include <QtConcurrent>
@@ -229,9 +230,33 @@ QolPage::QolPage(AppSettings &settings, QWidget *parent)
         refresh();
     });
     connect(m_reshade.secondary, &QPushButton::clicked, this, [this]() {
+        // A toggle with visible state. Starting the watchdog used to give no
+        // feedback at all - the process is a hidden PowerShell script - so the
+        // button read as broken whether it worked or not.
+        if (GameLauncher::runningReShadeWatchdog() > 0) {
+            GameLauncher::stopReShadeWatchdog();
+            refresh();
+            return;
+        }
         QString err;
-        if (!GameLauncher::startReShadeWatchdog(m_settings.plutoniumInstance, err))
+        if (!GameLauncher::startReShadeWatchdog(m_settings.plutoniumInstance, err)) {
             QMessageBox::warning(this, tr("ReShade"), err);
+            return;
+        }
+        refresh();
+        // A watchdog that dies in its first seconds means the script failed
+        // before it could say why; say it here instead of leaving silence.
+        const QPointer<QolPage> guard(this);
+        QTimer::singleShot(2000, this, [this, guard]() {
+            if (!guard)
+                return;
+            if (GameLauncher::runningReShadeWatchdog() <= 0)
+                QMessageBox::warning(this, tr("ReShade"),
+                                     tr("The ReShade watchdog closed immediately. Its log is "
+                                        "reshade-watchdog.log in the app's tools folder."));
+            else
+                refresh();
+        });
     });
     // One button, no folder to pick. Install and Update are the same job: read
     // the published manifest, download, verify, swap in. Remove takes it all
@@ -568,14 +593,18 @@ void QolPage::refresh()
 
     const bool rs = QolService::reShadeInstalled(m_settings);
     const bool addon = rs && QolService::addonReShadeActive(m_settings);
+    const bool watchdog = GameLauncher::runningReShadeWatchdog() > 0;
     m_reshade.status->setText(!rs ? tr("Not installed.")
-                              : addon ? tr("Installed, add-on build (LAN).")
-                                      : tr("Installed, stock build (online)."));
+                              : addon ? (watchdog ? tr("Installed, add-on build (LAN). Watchdog running.")
+                                                  : tr("Installed, add-on build (LAN)."))
+                                      : (watchdog ? tr("Installed, stock build (online). Watchdog running.")
+                                                  : tr("Installed, stock build (online).")));
     m_reshade.primary->setText(rs ? tr("Remove") : tr("Install"));
     m_reshade.primary->setProperty("cssClass", rs ? "danger" : "primary");
     m_reshade.primary->setEnabled(pluto);
-    m_reshade.secondary->setText(tr("Start watchdog"));
+    m_reshade.secondary->setText(watchdog ? tr("Stop watchdog") : tr("Start watchdog"));
     m_reshade.secondary->setVisible(rs);
+    m_reshade.secondary->setEnabled(pluto);
 
     const bool dlss = QolService::dlssPayloadReady(m_settings);
     const QString installedVersion = QolService::installedDlssVersion(m_settings);

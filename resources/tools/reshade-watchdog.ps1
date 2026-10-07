@@ -124,7 +124,13 @@ $ProcNames = @('plutonium-bootstrapper-win32','t6zm','t6mp','t6sp','t5mp','t5sp'
 function Test-AnyProcess {
     param([string[]] $Names)
     foreach ($n in $Names) {
-        if (Get-Process -Name $n -ErrorAction SilentlyContinue) { return $true }
+        foreach ($process in Get-Process -Name $n -ErrorAction SilentlyContinue) {
+            try {
+                if ($process.Path -and $process.Path.StartsWith($PlutoRoot.TrimEnd('\') + '\', [StringComparison]::OrdinalIgnoreCase)) {
+                    return $true
+                }
+            } catch { }
+        }
     }
     return $false
 }
@@ -472,7 +478,11 @@ if (Test-Path -LiteralPath $VaultDir) {
 
 $verifyPS1 = Join-Path $PSScriptRoot 'reshade-verify.ps1'
 if (Test-Path -LiteralPath $verifyPS1) {
-    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $verifyPS1
+    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $verifyPS1 -PlutoRoot $PlutoRoot -VaultOnly
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host '  ReShade preflight failed. Open the mod manager and reinstall ReShade.' -ForegroundColor Red
+        exit 1
+    }
     if (Test-Path -LiteralPath $VaultDir) {
         $vaultFx = @(Get-ChildItem -LiteralPath $VaultDir -Recurse -File -Filter *.fx -ErrorAction SilentlyContinue).Count
     }
@@ -542,7 +552,10 @@ $lastDedupe    = Get-Date -Year 1970
 
 #  One sweep at startup, before Plutonium is even opened - this is the pass that
 #  normally does the work, since the tree is only ever dirtied between sessions.
-$d = (Remove-DuplicateShaders) + (Remove-CorruptShaders) + (Repair-PresetDuplicates)
+$d = 0
+if (-not (Test-AnyProcess $ProcNames)) {
+    $d = (Remove-DuplicateShaders) + (Remove-CorruptShaders) + (Repair-PresetDuplicates)
+}
 $fxSeen = @(Get-ChildItem -LiteralPath (Join-Path $BinDir 'reshade-shaders\Shaders') -Recurse -File -Filter *.fx -ErrorAction SilentlyContinue).Count
 if ($d -gt 0) {
     Write-Host ("  [{0}] Startup tidy: {1} duplicate/corrupt shader(s) quarantined, {2} .fx remain." -f (Get-Date -Format 'HH:mm:ss'), $d, $fxSeen) -ForegroundColor Green
@@ -550,6 +563,7 @@ if ($d -gt 0) {
     Write-Host ("  [{0}] Startup tidy: no duplicate or corrupt shaders found ({1} .fx scanned)." -f (Get-Date -Format 'HH:mm:ss'), $fxSeen) -ForegroundColor DarkGray
 }
 $lastDedupe = Get-Date
+Write-Host ("  [{0}] Watchdog ready for {1}." -f (Get-Date -Format 'HH:mm:ss'), $PlutoRoot) -ForegroundColor Green
 
 while ($true) {
     $running = Test-AnyProcess $ProcNames

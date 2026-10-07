@@ -29,6 +29,8 @@
 #include <QSysInfo>
 #include <QTextStream>
 #include <QTimer>
+#include <QThread>
+#include <QProcess>
 #include <cstdio>
 
 namespace {
@@ -583,11 +585,47 @@ int main(int argc, char *argv[])
                 }
             }
         }
+        // Simulate Plutonium's file cleanup in a scratch root. The harmless
+        // system ping process supplies the expected process name and path.
+        check("watchdog: fresh ReShade payload", QolService::installReShade(rs, err), err);
+        check("watchdog: LAN mode", QolService::applyReShadeMode(rs, QolService::ReShadeMode::Lan, false, err), err);
+        const QString triggerPath = QDir(rs.plutoniumInstance).filePath("bin/plutonium-bootstrapper-win32.exe");
+        QFile::copy(QDir(qEnvironmentVariable("SystemRoot", "C:/Windows")).filePath("System32/ping.exe"), triggerPath);
+        QProcess trigger;
+        trigger.start(triggerPath, {"-t", "127.0.0.1"});
+        check("watchdog: simulated bootstrapper starts", trigger.waitForStarted());
+        // Older installs had a vault with no effects. Startup must heal it
+        // from embedded files even without any shader pack on the PC.
+        QDir(QDir(QolService::reShadeVault(rs)).filePath("reshade-shaders")).removeRecursively();
+        const QString logPath = QDir(GameLauncher::toolsDir()).filePath("reshade-watchdog.log");
+        QFile::remove(logPath);
         const qint64 wd = GameLauncher::startReShadeWatchdog(rs.plutoniumInstance, err);
         check("watchdog started", wd > 0, err);
         check("watchdog verifier unpacked",
               QDir(QCoreApplication::applicationDirPath()).exists(QStringLiteral("tools/reshade-verify.ps1")));
+        auto await = [](const std::function<bool()> &ready) {
+            for (int i = 0; i < 100; ++i) {
+                if (ready()) return true;
+                QThread::msleep(200);
+            }
+            return false;
+        };
+        check("watchdog: ready on selected root", await([&]() {
+            QFile f(logPath);
+            return f.open(QIODevice::ReadOnly) && f.readAll().contains("Watchdog ready for");
+        }));
+        const QString removedShader = QDir(rs.plutoniumInstance).filePath("bin/reshade-shaders/Shaders/SweetFX/Levels.fx");
+        const QString removedRuntime = QDir(rs.plutoniumInstance).filePath("bin/dxgi.dll");
+        QFile::remove(removedShader);
+        QFile::remove(removedRuntime);
+        check("watchdog: restores shader and LAN runtime", await([&]() {
+            return QFileInfo::exists(removedShader) && QFileInfo::exists(removedRuntime)
+                   && QolService::addonReShadeActive(rs);
+        }));
         if (wd > 0) GameLauncher::stopReShadeWatchdog();
+        check("watchdog: stopped", GameLauncher::runningReShadeWatchdog() == 0);
+        trigger.kill();
+        trigger.waitForFinished();
         QDir(rs.plutoniumInstance).removeRecursively();
         check("themes >= 15", Theme::names().size() >= 15, QString::number(Theme::names().size()));
         for (const QString &key : Theme::names()) {

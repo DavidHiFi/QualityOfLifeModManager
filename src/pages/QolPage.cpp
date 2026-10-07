@@ -91,6 +91,24 @@ QolPage::QolPage(AppSettings &settings, QWidget *parent)
                        tr("Cinematic colour grading for every Plutonium game. Plutonium clears its bin folder on "
                           "every start, so play with the ReShade option on the game page (or start the watchdog "
                           "here) and the files are put back the moment the game opens."));
+    m_reshade.tertiary = new QPushButton(tr("View log"), m_reshade.card);
+    m_reshade.tertiary->setCursor(Qt::PointingHandCursor);
+    m_reshade.tertiary->setMinimumHeight(36);
+    static_cast<QHBoxLayout *>(m_reshade.card->layout())->insertWidget(1, m_reshade.tertiary, 0, Qt::AlignVCenter);
+    connect(m_reshade.tertiary, &QPushButton::clicked, this, [this]() {
+        const QString log = QDir(GameLauncher::toolsDir()).filePath("reshade-watchdog.log");
+        QFile file(log);
+        if (!file.open(QIODevice::ReadOnly)) {
+            QMessageBox::information(this, tr("ReShade watchdog"), tr("Start the watchdog to create its log."));
+            return;
+        }
+        QMessageBox box(this);
+        box.setWindowTitle(tr("ReShade watchdog log"));
+        box.setText(tr("The watchdog runs in the background. Its latest activity is shown below."));
+        box.setDetailedText(QString::fromUtf8(file.readAll().right(24000)));
+        box.setStandardButtons(QMessageBox::Ok);
+        box.exec();
+    });
     m_dlss = addRow(root, tr("LAN ONLY"), tr("DLSS 5 Neural Rendering"),
                     tr("NVIDIA DLSS 5 in Black Ops II. Install downloads it and checks every file; the app keeps "
                        "it up to date. It runs only in LAN games: every online launch takes it out of Plutonium "
@@ -605,6 +623,7 @@ void QolPage::refresh()
     m_reshade.secondary->setText(watchdog ? tr("Stop watchdog") : tr("Start watchdog"));
     m_reshade.secondary->setVisible(rs);
     m_reshade.secondary->setEnabled(pluto);
+    m_reshade.tertiary->setVisible(rs || watchdog);
 
     const bool dlss = QolService::dlssPayloadReady(m_settings);
     const QString installedVersion = QolService::installedDlssVersion(m_settings);

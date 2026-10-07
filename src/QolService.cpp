@@ -711,6 +711,33 @@ bool copyEmbeddedReShadeShaders(const QString &dest, QStringList &written, QStri
     return true;
 }
 
+bool prepareReShadeWatchdog(const AppSettings &s, QString &error)
+{
+    const QString vault = reShadeVault(s);
+    const QString bin = QDir(s.plutoniumInstance).filePath("bin");
+    if (!QDir(bin).exists()) {
+        error = QObject::tr("Plutonium's bin folder was not found.");
+        return false;
+    }
+    QDir().mkpath(vault);
+    for (const QString &name : kReShadeFiles) {
+        const QString target = QDir(vault).filePath(name);
+        if (QFileInfo::exists(target)) continue;
+        const QString live = QDir(bin).filePath(name);
+        // The base vault always carries the online runtime. Preserve the
+        // player's presets, while LAN runtime selection stays with the mode.
+        const QString source = name != QLatin1String("dxgi.dll") && QFileInfo::exists(live)
+            ? live : QStringLiteral(":/reshade/") + name;
+        if (!QFile::copy(source, target)) {
+            error = QObject::tr("Could not prepare ReShade file %1.").arg(name);
+            return false;
+        }
+        QFile::setPermissions(target, QFile::permissions(target) | QFileDevice::WriteOwner);
+    }
+    QStringList written;
+    return copyEmbeddedReShadeShaders(vault, written, error);
+}
+
 bool installReShade(const AppSettings &s, QString &error)
 {
     if (const QString g = runningGame(); !g.isEmpty()) {

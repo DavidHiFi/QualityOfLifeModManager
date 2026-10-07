@@ -393,6 +393,10 @@ qint64 startReShadeWatchdog(const QString &plutoniumRoot, QString &error)
     // Nothing from a previous session gets to keep running: it would be
     // enforcing the rules of whatever script version it started with.
     stopReShadeWatchdog();
+    AppSettings settings;
+    settings.plutoniumInstance = plutoniumRoot;
+    if (!QolService::prepareReShadeWatchdog(settings, error))
+        return 0;
     QString verifier;
     if (!unpackTool(QStringLiteral("reshade-verify.ps1"), verifier, error))
         return 0;

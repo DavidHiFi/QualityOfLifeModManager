@@ -478,7 +478,7 @@ if (Test-Path -LiteralPath $VaultDir) {
 
 $verifyPS1 = Join-Path $PSScriptRoot 'reshade-verify.ps1'
 if (Test-Path -LiteralPath $verifyPS1) {
-    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $verifyPS1 -PlutoRoot $PlutoRoot -VaultOnly
+    & (Join-Path $PSHOME 'powershell.exe') -NoProfile -ExecutionPolicy Bypass -File $verifyPS1 -PlutoRoot $PlutoRoot -VaultOnly
     if ($LASTEXITCODE -ne 0) {
         Write-Host '  ReShade preflight failed. Open the mod manager and reinstall ReShade.' -ForegroundColor Red
         exit 1

@@ -55,6 +55,7 @@ namespace QolService
     // watchdog restores from. Backs up whatever was in bin first.
     bool reShadeInstalled(const AppSettings &s);
     bool installReShade(const AppSettings &s, QString &error);
+    bool prepareReShadeWatchdog(const AppSettings &s, QString &error);
     bool removeReShade(const AppSettings &s, QString &error);
 
     // ---------------------------------------------------------------------

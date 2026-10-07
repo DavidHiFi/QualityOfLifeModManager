@@ -32,6 +32,8 @@
 #include <QTemporaryDir>
 #include <QProcess>
 #include <QTimer>
+#include <QThread>
+#include <QProcess>
 #include <cstdio>
 
 namespace {
@@ -625,11 +627,47 @@ int main(int argc, char *argv[])
                 }
             }
         }
+        // Simulate Plutonium's file cleanup in a scratch root. The harmless
+        // system ping process supplies the expected process name and path.
+        check("watchdog: fresh ReShade payload", QolService::installReShade(rs, err), err);
+        check("watchdog: LAN mode", QolService::applyReShadeMode(rs, QolService::ReShadeMode::Lan, false, err), err);
+        const QString triggerPath = QDir(rs.plutoniumInstance).filePath("bin/plutonium-bootstrapper-win32.exe");
+        QFile::copy(QDir(qEnvironmentVariable("SystemRoot", "C:/Windows")).filePath("System32/ping.exe"), triggerPath);
+        QProcess trigger;
+        trigger.start(triggerPath, {"-t", "127.0.0.1"});
+        check("watchdog: simulated bootstrapper starts", trigger.waitForStarted());
+        // Older installs had a vault with no effects. Startup must heal it
+        // from embedded files even without any shader pack on the PC.
+        QDir(QDir(QolService::reShadeVault(rs)).filePath("reshade-shaders")).removeRecursively();
+        const QString logPath = QDir(GameLauncher::toolsDir()).filePath("reshade-watchdog.log");
+        QFile::remove(logPath);
         const qint64 wd = GameLauncher::startReShadeWatchdog(rs.plutoniumInstance, err);
         check("watchdog started", wd > 0, err);
         check("watchdog verifier unpacked",
               QDir(QCoreApplication::applicationDirPath()).exists(QStringLiteral("tools/reshade-verify.ps1")));
+        auto await = [](const std::function<bool()> &ready) {
+            for (int i = 0; i < 100; ++i) {
+                if (ready()) return true;
+                QThread::msleep(200);
+            }
+            return false;
+        };
+        check("watchdog: ready on selected root", await([&]() {
+            QFile f(logPath);
+            return f.open(QIODevice::ReadOnly) && f.readAll().contains("Watchdog ready for");
+        }));
+        const QString removedShader = QDir(rs.plutoniumInstance).filePath("bin/reshade-shaders/Shaders/SweetFX/Levels.fx");
+        const QString removedRuntime = QDir(rs.plutoniumInstance).filePath("bin/dxgi.dll");
+        QFile::remove(removedShader);
+        QFile::remove(removedRuntime);
+        check("watchdog: restores shader and LAN runtime", await([&]() {
+            return QFileInfo::exists(removedShader) && QFileInfo::exists(removedRuntime)
+                   && QolService::addonReShadeActive(rs);
+        }));
         if (wd > 0) GameLauncher::stopReShadeWatchdog();
+        check("watchdog: stopped", GameLauncher::runningReShadeWatchdog() == 0);
+        trigger.kill();
+        trigger.waitForFinished();
         QDir(rs.plutoniumInstance).removeRecursively();
         check("themes >= 15", Theme::names().size() >= 15, QString::number(Theme::names().size()));
         for (const QString &key : Theme::names()) {
@@ -675,6 +713,43 @@ int main(int argc, char *argv[])
             check("backup: 16x MSAA taken out of the settings backup",
                   read(bk + "/settings/players/plutonium_zm.cfg").contains("r_aaSamples \"4\"\r\nseta cg_fov"));
             check("backup: other mods never automatic", !QolBackups::exists(b, "mods"));
+
+            QString controllerMessage;
+            QolBackups::remove(b, "controller", e);
+            QFile::remove(t6 + "/images/xenonbutton_a.iwi");
+            check("backup: stock controller state",
+                  QolBackups::backup(b, "controller", false, {}, controllerMessage) == QolBackups::Result::Saved
+                      && QolBackups::exists(b, "controller") && QolBackups::info(b, "controller").files == 0,
+                  controllerMessage);
+            put(t6 + "/images/xenonbutton_a.iwi", "ps5 a");
+            put(t6 + "/images/pack_extra.iwi", "ps5 extra");
+            put(QolService::stateDir(b) + "/installed-controller.txt", "xenonbutton_a.iwi\npack_extra.iwi\n");
+            put(QolService::stateDir(b) + "/controller-pack.txt", "ps5");
+            check("restore: stock controller state",
+                  QolBackups::restore(b, "controller", {}, e)
+                      && !QFileInfo::exists(t6 + "/images/xenonbutton_a.iwi")
+                      && !QFileInfo::exists(t6 + "/images/pack_extra.iwi")
+                      && QolService::installedController(b).isEmpty()
+                      && read(t6 + "/images/mine.iwi") == "mine", e);
+            put(t6 + "/images/xenonbutton_a.iwi", "ps5 a");
+            put(t6 + "/images/pack_extra.iwi", "ps5 extra");
+            put(QolService::stateDir(b) + "/installed-controller.txt", "xenonbutton_a.iwi\npack_extra.iwi\n");
+            put(QolService::stateDir(b) + "/controller-pack.txt", "ps5");
+            check("backup: installed PS5 icons included",
+                  QolBackups::backup(b, "controller", true, {}, controllerMessage) == QolBackups::Result::Saved
+                      && read(bk + "/controller/controller/xenonbutton_a.iwi") == "ps5 a"
+                      && read(bk + "/controller/controller/pack_extra.iwi") == "ps5 extra", controllerMessage);
+            QolService::removeController(b, e);
+            put(t6 + "/images/xenonbutton_b.iwi", "different pack b");
+            check("restore: PS5 icons and selection",
+                  QolBackups::restore(b, "controller", {}, e)
+                      && read(t6 + "/images/xenonbutton_a.iwi") == "ps5 a"
+                      && QolService::installedController(b) == "ps5"
+                      && !QFileInfo::exists(t6 + "/images/xenonbutton_b.iwi"), e);
+            QFile::remove(bk + "/controller/controller/xenonbutton_a.iwi");
+            check("restore: incomplete controller backup rejected",
+                  !QolBackups::restore(b, "controller", {}, e)
+                      && read(t6 + "/images/xenonbutton_a.iwi") == "ps5 a");
 
             // The older copy is the one worth having.
             put(t6 + "/images/mine.iwi", "changed");

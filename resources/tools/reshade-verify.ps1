@@ -46,7 +46,8 @@ param(
     # $PSScriptRoot yet while it is evaluating param() defaults, and the .bat
     # files all run 5.1.
     [string] $PayloadDir,
-    [switch] $Quiet
+    [switch] $Quiet,
+    [switch] $VaultOnly
 )
 
 $ErrorActionPreference = 'Stop'
@@ -130,6 +131,8 @@ if ($vaultFx -eq 0) {
     Say ''
     exit 1
 }
+
+if ($VaultOnly) { exit 0 }
 
 # --- 2. what is actually missing from bin right now --------------------------
 if (-not (Test-Path -LiteralPath $BinDir)) {

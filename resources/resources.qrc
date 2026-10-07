@@ -46,6 +46,7 @@
         <file>archive/7z.exe</file>
         <file>archive/7z.dll</file>
         <file>archive/License.txt</file>
+        <file>archive/README.md</file>
         <file>tools/reshade-verify.ps1</file>
         <file>tools/reshade-watchdog.ps1</file>
         <file>reshade/dxgi.dll</file>

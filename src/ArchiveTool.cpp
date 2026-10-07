@@ -85,7 +85,7 @@ QString findSevenZip()
                              .filePath(QStringLiteral("archive-26.04"));
     if (!QDir().mkpath(root))
         return {};
-    for (const QString &name : {QStringLiteral("7z.dll"), QStringLiteral("7z.exe"), QStringLiteral("License.txt")}) {
+    for (const QString &name : {QStringLiteral("7z.dll"), QStringLiteral("7z.exe"), QStringLiteral("License.txt"), QStringLiteral("README.md")}) {
         QFile resource(QStringLiteral(":/archive/") + name);
         if (!resource.open(QIODevice::ReadOnly))
             return {};

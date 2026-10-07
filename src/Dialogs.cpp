@@ -85,20 +85,6 @@ void Dialogs::info(QWidget *parent, Msg kind, const AppSettings &settings)
     box.exec();
 }
 
-bool Dialogs::confirmDownload7z(QWidget *parent)
-{
-    QMessageBox box(parent);
-    box.setWindowTitle(QOL_APP_NAME);
-    box.setIcon(QMessageBox::Question);
-    box.setText(QObject::tr(
-        "Voce ainda nao tem o 7-Zip instalado na pasta do Cod Lan Launcher,\n"
-        "e nao pode instalar mods compactados por essa interface.\n"
-        "Deseja baixar o 7-Zip agora?\n(Requer conexao com a internet)"));
-    box.setStandardButtons(QMessageBox::Yes | QMessageBox::No);
-    box.setDefaultButton(QMessageBox::Yes);
-    return box.exec() == QMessageBox::Yes;
-}
-
 bool Dialogs::confirmDownloadGameSettings(QWidget *parent)
 {
     QMessageBox box(parent);

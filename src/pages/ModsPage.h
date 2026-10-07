@@ -39,7 +39,6 @@ private slots:
 
 private:
     void setBusy(bool busy);
-    void runSevenZipBootstrap();
     void installStandardOrSmart(const QString &archivePath);
     void handleModFile(const QString &path);
     bool tryCllInstall(const QString &path);
@@ -70,5 +69,4 @@ private:
     Job m_job = Job::None;
 
     QFutureWatcher<QString> m_installWatcher; // empty = ok; otherwise an error string
-    QFutureWatcher<int> m_sevenZipWatcher;
 };

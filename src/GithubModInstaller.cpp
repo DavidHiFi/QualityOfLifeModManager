@@ -791,7 +791,7 @@ QString apply(const Manifest &man,
                                 && (man.bundle.sha256.isEmpty() || prevSha == man.bundle.sha256);
         if (!sameBundle) {
             if (!ArchiveTool::hasSevenZip())
-                return QObject::tr("7-Zip is required to extract this compressed pack.");
+                return QObject::tr("Could not prepare the app's built-in archive extractor. Check that your cache folder is writable.");
             const QString tempRoot = QDir::temp().filePath(
                 QStringLiteral("LanLauncher_bundle_%1").arg(QDateTime::currentMSecsSinceEpoch()));
             QDir().mkpath(tempRoot);

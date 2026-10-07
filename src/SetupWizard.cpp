@@ -340,25 +340,8 @@ void SetupWizard::startKitInstall()
             }, Qt::QueuedConnection);
         };
 
-        if (!ArchiveTool::hasSevenZip()) {
-            progress(0, 0, QObject::tr("Baixando 7-Zip (necessario para extrair)..."));
-            const QString zipPath = QDir::temp().filePath("LanLauncherQt_7z.zip");
-            QString err;
-            if (!Downloader::downloadToFile(
-                    QStringLiteral("https://raw.githubusercontent.com/JugAndDoubleTap/LanLauncher/main/7z.zip"),
-                    zipPath, err,
-                    [this, progress](qint64 g, qint64 t) {
-                        progress(g, t, QObject::tr("Baixando 7-Zip... %1 / %2 KB")
-                                          .arg(g / 1024).arg(t > 0 ? t / 1024 : 0));
-                    })) {
-                return QObject::tr("Falha ao baixar o 7-Zip: %1").arg(err);
-            }
-            if (!ArchiveTool::extractBootstrapZip(zipPath, appDir)) {
-                QFile::remove(zipPath);
-                return QObject::tr("Falha ao instalar o 7-Zip.");
-            }
-            QFile::remove(zipPath);
-        }
+        if (!ArchiveTool::hasSevenZip())
+            return QObject::tr("Could not prepare the built-in archive extractor. Check that your cache folder is writable.");
 
         const QString datPath = QDir::temp().filePath("LanLauncher_pu.dat");
         QString err;

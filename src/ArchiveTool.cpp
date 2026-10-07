@@ -8,6 +8,10 @@
 #include <QProcess>
 #include <QRegularExpression>
 #include <QStandardPaths>
+#include <QCryptographicHash>
+#include <QMutex>
+#include <QMutexLocker>
+#include <QSaveFile>
 #include <QTemporaryDir>
 #include <cstring>
 
@@ -72,7 +76,33 @@ namespace ArchiveTool {
 
 QString findSevenZip()
 {
-    // next to the executable (downloaded from the 7-Zip prompt).
+#ifdef Q_OS_WIN
+    // Embedded in the executable, including self-updates. No system install
+    // or download is needed, and portable folders need not be writable.
+    static QMutex mutex;
+    QMutexLocker locker(&mutex);
+    const QString root = QDir(QStandardPaths::writableLocation(QStandardPaths::CacheLocation))
+                             .filePath(QStringLiteral("archive-26.04"));
+    if (!QDir().mkpath(root))
+        return {};
+    for (const QString &name : {QStringLiteral("7z.dll"), QStringLiteral("7z.exe"), QStringLiteral("License.txt")}) {
+        QFile resource(QStringLiteral(":/archive/") + name);
+        if (!resource.open(QIODevice::ReadOnly))
+            return {};
+        const QByteArray data = resource.readAll();
+        const QString path = QDir(root).filePath(name);
+        QFile existing(path);
+        if (existing.open(QIODevice::ReadOnly)
+            && QCryptographicHash::hash(existing.readAll(), QCryptographicHash::Sha256)
+                == QCryptographicHash::hash(data, QCryptographicHash::Sha256))
+            continue;
+        existing.close();
+        QSaveFile output(path);
+        if (!output.open(QIODevice::WriteOnly) || output.write(data) != data.size() || !output.commit())
+            return {};
+    }
+    return QDir(root).filePath(QStringLiteral("7z.exe"));
+#else
     const QString bundled = QDir(QCoreApplication::applicationDirPath()).filePath("7z/7z.exe");
     if (QFileInfo::exists(bundled))
         return bundled;
@@ -105,6 +135,7 @@ QString findSevenZip()
     }
 #endif
     return QString();
+#endif
 }
 
 bool hasSevenZip()
@@ -124,7 +155,7 @@ bool extractToDirectory(const QString &archivePath, const QString &destDir, QStr
     const QString sevenZip = findSevenZip();
     if (sevenZip.isEmpty()) {
         if (errorOut)
-            *errorOut = QObject::tr("7-Zip nao encontrado.");
+            *errorOut = QObject::tr("Could not prepare the app's built-in archive extractor. Check that your cache folder is writable.");
         return false;
     }
 
@@ -172,25 +203,8 @@ bool extractToDirectory(const QString &archivePath, const QString &destDir, QStr
 QStringList listEntries(const QString &archivePath)
 {
     QStringList out;
-    const QString sevenZip = findSevenZip();
-    if (sevenZip.isEmpty() || !QFileInfo::exists(archivePath))
-        return out;
-    QProcess proc;
-    proc.start(sevenZip, {"l", "-ba",
-                          QDir::toNativeSeparators(QFileInfo(archivePath).absoluteFilePath())});
-    if (!proc.waitForStarted(8000))
-        return out;
-    proc.waitForFinished(-1);
-    const QString text = QString::fromLocal8Bit(proc.readAllStandardOutput());
-    for (QString line : text.split(QLatin1Char('\n'))) {
-        line = line.trimmed();
-        if (line.isEmpty())
-            continue;
-        const int sp = line.lastIndexOf(QLatin1Char(' '));
-        const QString name = (sp >= 0) ? line.mid(sp + 1).trimmed() : line;
-        if (!name.isEmpty())
-            out << QString(name).replace(QLatin1Char('\\'), QLatin1Char('/'));
-    }
+    for (const ListedFile &file : listDetailed(archivePath))
+        out << file.path;
     return out;
 }
 
@@ -202,12 +216,14 @@ QList<ListedFile> listDetailed(const QString &archivePath)
     if (sevenZip.isEmpty() || !QFileInfo::exists(archivePath))
         return out;
     QProcess proc;
-    proc.start(sevenZip, {"l", "-slt",
+    proc.start(sevenZip, {"l", "-slt", "-ba", "-sccUTF-8",
                           QDir::toNativeSeparators(QFileInfo(archivePath).absoluteFilePath())});
     if (!proc.waitForStarted(8000))
         return out;
     proc.waitForFinished(-1);
-    const QString text = QString::fromLocal8Bit(proc.readAllStandardOutput());
+    if (proc.exitStatus() != QProcess::NormalExit || proc.exitCode() != 0)
+        return out;
+    const QString text = QString::fromUtf8(proc.readAllStandardOutput());
     ListedFile cur;
     auto flush = [&]() {
         if (cur.path.isEmpty())
@@ -230,6 +246,8 @@ QList<ListedFile> listDetailed(const QString &archivePath)
             cur.size = line.mid(7).trimmed().toLongLong();
         else if (line.startsWith(QLatin1String("Attributes = ")))
             cur.isDir = line.contains(QLatin1Char('D'));
+        else if (line == QLatin1String("Folder = +"))
+            cur.isDir = true;
     }
     flush();
     return out;

@@ -4,6 +4,7 @@
 #include "Theme.h"
 #include "MainWindow.h"
 #include "QolBackups.h"
+#include "ArchiveTool.h"
 #include "QolService.h"
 #include "UpdateService.h"
 #include "PlutoniumAuth.h"
@@ -28,6 +29,8 @@
 #include <QSslSocket>
 #include <QSysInfo>
 #include <QTextStream>
+#include <QTemporaryDir>
+#include <QProcess>
 #include <QTimer>
 #include <cstdio>
 
@@ -454,6 +457,45 @@ int main(int argc, char *argv[])
         note("plutonium account", PlutoniumAuth::accountSummary(
                  PlutoniumAuth::tokenRoot(settings.plutoniumInstance)));
         QString err;
+        {
+            QTemporaryDir scratch;
+            const QString engine = ArchiveTool::findSevenZip();
+            check("archive: embedded extractor ready", engine.contains("archive-26.04"), engine);
+            const QString source = scratch.filePath(QStringLiteral("source/mod folder"));
+            QDir().mkpath(source);
+            QFile sample(QDir(source).filePath(QStringLiteral("mod file.txt")));
+            sample.open(QIODevice::WriteOnly);
+            sample.write("archive test bytes");
+            sample.close();
+            for (const QString &format : {QStringLiteral("zip"), QStringLiteral("7z")}) {
+                const QString archive = scratch.filePath("pack." + format);
+                QProcess compressor;
+                compressor.setWorkingDirectory(scratch.filePath("source"));
+                compressor.start(engine, {"a", "-t" + format, archive, "mod folder"});
+                const bool made = compressor.waitForStarted() && compressor.waitForFinished(30000)
+                                  && compressor.exitCode() == 0;
+                check("archive: create " + format, made);
+                check("archive: list spaced paths " + format,
+                      ArchiveTool::listEntries(archive).contains("mod folder/mod file.txt"));
+                const QString dest = scratch.filePath("extract " + format);
+                err.clear();
+                const bool extracted = ArchiveTool::extractToDirectory(archive, dest, &err);
+                QFile restored(QDir(dest).filePath("mod folder/mod file.txt"));
+                check("archive: extract " + format, extracted && restored.open(QIODevice::ReadOnly)
+                      && restored.readAll() == "archive test bytes", err);
+                err.clear();
+                check("archive: selected paths " + format,
+                      ArchiveTool::extractPaths(archive, scratch.filePath("selected " + format),
+                                               {"mod folder/mod file.txt"}, &err), err);
+            }
+            QFile damaged(scratch.filePath("damaged.zip"));
+            damaged.open(QIODevice::WriteOnly);
+            damaged.write("not an archive");
+            damaged.close();
+            err.clear();
+            check("archive: damaged pack rejected",
+                  !ArchiveTool::extractToDirectory(damaged.fileName(), scratch.filePath("bad"), &err));
+        }
         // Every check below that writes runs on its own scratch root, so a
         // game open on the real one is no reason to refuse.
         QolService::ignoreRunningGameForSelftest();

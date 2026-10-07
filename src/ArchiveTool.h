@@ -15,7 +15,7 @@ namespace ArchiveTool
         SevenZipMissing,
     };
 
-    // Looks for bundled/system 7-Zip or a NanaZip command-line alias.
+    // Windows prepares the embedded extractor in the user's cache, offline.
     QString findSevenZip();
     bool hasSevenZip();
 

@@ -43,7 +43,6 @@ namespace Dialogs
     void info(QWidget *parent, Msg kind, const AppSettings &settings);
 
     // returns true if the user confirmed.
-    bool confirmDownload7z(QWidget *parent);
 
     // Ask whether to download the main Black Ops II gamesettings.
     // Returns true if confirmed.

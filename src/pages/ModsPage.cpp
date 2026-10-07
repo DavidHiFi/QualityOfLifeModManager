@@ -314,17 +314,6 @@ ModsPage::ModsPage(AppSettings &settings, QWidget *parent)
         }
     });
 
-    connect(&m_sevenZipWatcher, &QFutureWatcher<int>::finished, this, [this]() {
-        setBusy(false);
-        m_progress->setVisible(false);
-        m_progressLabel->setVisible(false);
-        switch (m_sevenZipWatcher.result()) {
-        case 0: Dialogs::info(this, Dialogs::Msg::SevenZipSuccess, m_settings); break;
-        case 1: Dialogs::info(this, Dialogs::Msg::SevenZipFailDownload, m_settings); break;
-        default: Dialogs::info(this, Dialogs::Msg::SevenZipFailInstall, m_settings); break;
-        }
-    });
-
     onGameSelected(m_gameCombo->currentText());
 }
 
@@ -479,8 +468,7 @@ void ModsPage::handleModFile(const QString &path)
 bool ModsPage::tryCllInstall(const QString &path)
 {
     if (!ArchiveTool::hasSevenZip()) {
-        if (Dialogs::confirmDownload7z(this))
-            runSevenZipBootstrap();
+        Dialogs::error(this, tr("Could not prepare the built-in archive extractor. Check that your cache folder is writable."));
         return true;
     }
     const auto man = CllInstaller::peekArchive(path);
@@ -622,8 +610,7 @@ void ModsPage::onInstallMod()
         return;
     }
     if (!ArchiveTool::hasSevenZip()) {
-        if (Dialogs::confirmDownload7z(this))
-            runSevenZipBootstrap();
+        Dialogs::error(this, tr("Could not prepare the built-in archive extractor. Check that your cache folder is writable."));
         return;
     }
     if (CllInstaller::isCllPack(archivePath) || CllInstaller::archiveMentionsInstaller(archivePath)) {
@@ -712,44 +699,6 @@ void ModsPage::onDeleteMod()
         return QString();
     });
     m_installWatcher.setFuture(future);
-}
-
-void ModsPage::runSevenZipBootstrap()
-{
-    setBusy(true);
-    m_progress->setVisible(true);
-    m_progressLabel->setVisible(true);
-    m_progress->setRange(0, 100);
-    m_progress->setValue(0);
-    m_progressLabel->setText(tr("Baixando 7-Zip..."));
-
-    auto future = QtConcurrent::run([this]() -> int {
-        const QString zipPath = QDir::temp().filePath("LanLauncherQt_7z.zip");
-        QString error;
-        if (!Downloader::downloadToFile(
-                "https://raw.githubusercontent.com/JugAndDoubleTap/LanLauncher/main/7z.zip",
-                zipPath, error,
-                [this](qint64 got, qint64 total) {
-                    QMetaObject::invokeMethod(this, [this, got, total]() {
-                        if (total > 0) {
-                            m_progress->setRange(0, 100);
-                            m_progress->setValue(int(got * 100 / total));
-                        }
-                        m_progressLabel->setText(tr("Baixando 7-Zip... %1 / %2 KB")
-                                                     .arg(got / 1024).arg(total > 0 ? total / 1024 : 0));
-                    }, Qt::QueuedConnection);
-                })) {
-            return 1;
-        }
-        QMetaObject::invokeMethod(this, [this]() {
-            m_progress->setRange(0, 0);
-            m_progressLabel->setText(tr("Extraindo 7-Zip..."));
-        }, Qt::QueuedConnection);
-        const bool ok = ArchiveTool::extractBootstrapZip(zipPath, QCoreApplication::applicationDirPath());
-        QFile::remove(zipPath);
-        return ok ? 0 : 2;
-    });
-    m_sevenZipWatcher.setFuture(future);
 }
 
 void ModsPage::retranslate()

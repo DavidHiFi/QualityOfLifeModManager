@@ -7,6 +7,10 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QMap>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QJsonArray>
+#include <QSaveFile>
 #include <QRegularExpression>
 #include <QSet>
 #include <QStorageInfo>
@@ -60,6 +64,17 @@ const QStringList kGameSettings = {"plutonium_zm.cfg", "plutonium_mp.cfg", "bind
 
 QString t6(const AppSettings &s) { return QolService::t6Storage(s); }
 QString under(const QString &root, const QString &rel) { return QDir::cleanPath(QDir(root).filePath(rel)); }
+QStringList readLines(const QString &path);
+
+QStringList controllerNames(const AppSettings &s)
+{
+    QStringList names = kIconNames;
+    for (const QString &name : readLines(QDir(QolService::stateDir(s)).filePath("installed-controller.txt")))
+        if (!name.contains('/') && !name.contains('\\') && name.endsWith(".iwi", Qt::CaseInsensitive)
+            && !names.contains(name, Qt::CaseInsensitive))
+            names << name;
+    return names;
+}
 
 QMap<QString, Set> sets(const AppSettings &s)
 {
@@ -79,8 +94,8 @@ QMap<QString, Set> sets(const AppSettings &s)
                              "The custom sound pack writes here."),
                  {{"zone", under(storage, "zone"), true, {}, {}, {}, {"zone"}}}};
     m["controller"] = {QObject::tr("My controller icons"), QObject::tr("your controller icons"),
-                       QObject::tr("The button-prompt images a controller icon pack replaces."),
-                       {{"controller", images, false, kIconNames, {}, {}, {"controller"}}}};
+                       QObject::tr("Your current controller icons, including installed packs. Stock icons can also be backed up and restored."),
+                       {{"controller", images, false, controllerNames(s)}}};
     // Glob *.ini catches a preset saved under the player's own name, which the
     // fixed list cannot know in advance.
     m["reshade"] = {QObject::tr("My ReShade setup"), QObject::tr("your ReShade setup"),
@@ -312,6 +327,8 @@ Info info(const AppSettings &s, const QString &kind, bool measure)
         QDirIterator it(out.folder, QDir::Files | QDir::Hidden, QDirIterator::Subdirectories);
         while (it.hasNext()) {
             it.next();
+            if (kind == QLatin1String("controller") && it.fileName() == QLatin1String("controller-state.json"))
+                continue;
             ++out.files;
             out.bytes += it.fileInfo().size();
         }
@@ -347,8 +364,10 @@ Result backup(const AppSettings &s, const QString &kind, bool replace, const Pro
         plan << qMakePair(part, files);
     }
     if (total == 0) {
-        message = QObject::tr("Nothing to back up for %1 - there are no files of yours there yet.").arg(set.title);
-        return Result::NothingToSave;
+        if (kind != QLatin1String("controller")) {
+            message = QObject::tr("Nothing to back up for %1 - there are no files of yours there yet.").arg(set.title);
+            return Result::NothingToSave;
+        }
     }
     // Room check up front. A backup that runs the disk dry half-way through
     // helps nobody and can take the install down with it.
@@ -364,6 +383,21 @@ Result backup(const AppSettings &s, const QString &kind, bool replace, const Pro
     // that fails half-way never costs the backup that was already there.
     const QString staging = dest + QStringLiteral(".new");
     QDir(staging).removeRecursively();
+    if (kind == QLatin1String("controller")) {
+        QDir().mkpath(staging);
+        QJsonArray names;
+        for (const auto &step : plan)
+            for (const FileRef &f : step.second) names.append(f.rel);
+        const QJsonObject snapshot{{"format", 1}, {"files", names},
+                                   {"pack", QolService::installedController(s)}};
+        QSaveFile metadata(QDir(staging).filePath("controller-state.json"));
+        const QByteArray data = QJsonDocument(snapshot).toJson();
+        if (!metadata.open(QIODevice::WriteOnly) || metadata.write(data) != data.size() || !metadata.commit()) {
+            QDir(staging).removeRecursively();
+            message = QObject::tr("Could not save the controller icon backup.");
+            return Result::Failed;
+        }
+    }
     int done = 0;
     for (const auto &step : plan) {
         const QString to = QDir(staging).filePath(step.first.sub);
@@ -400,6 +434,8 @@ Result backup(const AppSettings &s, const QString &kind, bool replace, const Pro
     message = QObject::tr("Backed up %1 - %2, %3, to %4.")
                   .arg(set.title, total == 1 ? QObject::tr("1 file") : QObject::tr("%1 files").arg(total),
                        fmtSize(bytes), QDir::toNativeSeparators(dest));
+    if (kind == QLatin1String("controller") && total == 0)
+        message = QObject::tr("Backed up stock controller icons. Put back will remove custom icon overrides and use the game's stock icons.");
     if (kind == QLatin1String("mod") || kind == QLatin1String("settings"))
         repairAaSamples(s);
     return Result::Saved;
@@ -467,12 +503,32 @@ bool restore(const AppSettings &s, const QString &kind, const Progress &p, QStri
         for (const QFileInfo &fi : QDir(dir).entryInfoList(QDir::Files))
             moves << Move{fi.filePath(), QDir(set.parts.first().path).filePath(fi.fileName()),
                           fi.fileName(), &set.parts.first()};
-    if (moves.isEmpty()) {
+    QJsonObject controllerSnapshot;
+    if (kind == QLatin1String("controller") && QFileInfo::exists(QDir(dir).filePath("controller-state.json"))) {
+        QFile metadata(QDir(dir).filePath("controller-state.json"));
+        if (metadata.open(QIODevice::ReadOnly))
+            controllerSnapshot = QJsonDocument::fromJson(metadata.readAll()).object();
+        if (controllerSnapshot.value("format").toInt() != 1 || !controllerSnapshot.value("files").isArray()
+            || !controllerSnapshot.value("pack").isString()) {
+            error = QObject::tr("The controller icon backup is damaged. No icons were changed.");
+            return false;
+        }
+        for (const QJsonValue &v : controllerSnapshot.value("files").toArray()) {
+            const QString name = v.toString();
+            if (name.isEmpty() || name.contains('/') || name.contains('\\') || !name.endsWith(".iwi", Qt::CaseInsensitive)
+                || !QFileInfo::exists(QDir(dir).filePath("controller/" + name))) {
+                error = QObject::tr("The controller icon backup is incomplete. No icons were changed.");
+                return false;
+            }
+        }
+    }
+    if (moves.isEmpty() && controllerSnapshot.isEmpty()) {
         error = QObject::tr("That backup is empty - there is nothing to put back.");
         return false;
     }
 
     int done = 0;
+    const QStringList currentControllerNames = controllerNames(s);
     QStringList imagesBack, zoneBack, binBack;
     for (const Move &m : moves) {
         if (!copyFile(m.from, m.to, error)) {
@@ -492,6 +548,40 @@ bool restore(const AppSettings &s, const QString &kind, const Progress &p, QStri
     forgetFromManifest(s, QStringLiteral("controller"), imagesBack);
     forgetFromManifest(s, QStringLiteral("zone"), zoneBack);
     forgetFromManifest(s, QStringLiteral("reshade"), binBack);
+    if (!controllerSnapshot.isEmpty()) {
+        QStringList saved;
+        for (const QJsonValue &v : controllerSnapshot.value("files").toArray()) saved << v.toString();
+        QStringList removed;
+        for (const QString &name : currentControllerNames) {
+            if (saved.contains(name, Qt::CaseInsensitive)) continue;
+            const QString path = QDir(set.parts.first().path).filePath(name);
+            if (QFileInfo::exists(path)) {
+                QFile::setPermissions(path, QFile::permissions(path) | QFileDevice::WriteOwner);
+                if (!QFile::remove(path)) {
+                    error = QObject::tr("Could not remove the current controller icon %1.").arg(name);
+                    return false;
+                }
+            }
+            removed << name;
+        }
+        forgetFromManifest(s, QStringLiteral("images"), removed);
+        const QString pack = controllerSnapshot.value("pack").toString();
+        const QString state = QolService::stateDir(s);
+        if (pack.isEmpty()) {
+            QFile::remove(manifestFile(s, QStringLiteral("controller")));
+            QFile::remove(QDir(state).filePath("controller-pack.txt"));
+        } else {
+            for (const auto &entry : {qMakePair(manifestFile(s, QStringLiteral("controller")), saved.join('\n') + '\n'),
+                                      qMakePair(QDir(state).filePath("controller-pack.txt"), pack)}) {
+                QSaveFile f(entry.first);
+                const QByteArray data = entry.second.toUtf8();
+                if (!f.open(QIODevice::WriteOnly) || f.write(data) != data.size() || !f.commit()) {
+                    error = QObject::tr("The icons were restored, but their installed state could not be saved.");
+                    return false;
+                }
+            }
+        }
+    }
     appendLog(s, QStringLiteral("restore: %1 (%2 files)").arg(kind).arg(done));
     return true;
 }

@@ -634,6 +634,43 @@ int main(int argc, char *argv[])
                   read(bk + "/settings/players/plutonium_zm.cfg").contains("r_aaSamples \"4\"\r\nseta cg_fov"));
             check("backup: other mods never automatic", !QolBackups::exists(b, "mods"));
 
+            QString controllerMessage;
+            QolBackups::remove(b, "controller", e);
+            QFile::remove(t6 + "/images/xenonbutton_a.iwi");
+            check("backup: stock controller state",
+                  QolBackups::backup(b, "controller", false, {}, controllerMessage) == QolBackups::Result::Saved
+                      && QolBackups::exists(b, "controller") && QolBackups::info(b, "controller").files == 0,
+                  controllerMessage);
+            put(t6 + "/images/xenonbutton_a.iwi", "ps5 a");
+            put(t6 + "/images/pack_extra.iwi", "ps5 extra");
+            put(QolService::stateDir(b) + "/installed-controller.txt", "xenonbutton_a.iwi\npack_extra.iwi\n");
+            put(QolService::stateDir(b) + "/controller-pack.txt", "ps5");
+            check("restore: stock controller state",
+                  QolBackups::restore(b, "controller", {}, e)
+                      && !QFileInfo::exists(t6 + "/images/xenonbutton_a.iwi")
+                      && !QFileInfo::exists(t6 + "/images/pack_extra.iwi")
+                      && QolService::installedController(b).isEmpty()
+                      && read(t6 + "/images/mine.iwi") == "mine", e);
+            put(t6 + "/images/xenonbutton_a.iwi", "ps5 a");
+            put(t6 + "/images/pack_extra.iwi", "ps5 extra");
+            put(QolService::stateDir(b) + "/installed-controller.txt", "xenonbutton_a.iwi\npack_extra.iwi\n");
+            put(QolService::stateDir(b) + "/controller-pack.txt", "ps5");
+            check("backup: installed PS5 icons included",
+                  QolBackups::backup(b, "controller", true, {}, controllerMessage) == QolBackups::Result::Saved
+                      && read(bk + "/controller/controller/xenonbutton_a.iwi") == "ps5 a"
+                      && read(bk + "/controller/controller/pack_extra.iwi") == "ps5 extra", controllerMessage);
+            QolService::removeController(b, e);
+            put(t6 + "/images/xenonbutton_b.iwi", "different pack b");
+            check("restore: PS5 icons and selection",
+                  QolBackups::restore(b, "controller", {}, e)
+                      && read(t6 + "/images/xenonbutton_a.iwi") == "ps5 a"
+                      && QolService::installedController(b) == "ps5"
+                      && !QFileInfo::exists(t6 + "/images/xenonbutton_b.iwi"), e);
+            QFile::remove(bk + "/controller/controller/xenonbutton_a.iwi");
+            check("restore: incomplete controller backup rejected",
+                  !QolBackups::restore(b, "controller", {}, e)
+                      && read(t6 + "/images/xenonbutton_a.iwi") == "ps5 a");
+
             // The older copy is the one worth having.
             put(t6 + "/images/mine.iwi", "changed");
             QString msg;

@@ -687,7 +687,9 @@ void QolPage::refreshBackups()
             ++automatic;
             if (info.exists) ++have;
         }
-        const QString now = info.liveFiles == 0
+        const QString now = kinds[i] == QLatin1String("controller") && info.liveFiles == 0
+            ? tr("stock controller icons selected")
+            : info.liveFiles == 0
             ? tr("nothing of yours there now")
             : tr("%1, %2 there now").arg(fmtFiles(info.liveFiles), fmtSize(info.liveBytes));
         r.status->setText(info.exists
@@ -696,7 +698,7 @@ void QolPage::refreshBackups()
                                          fmtFiles(info.files), fmtSize(info.bytes), now)
                               : tr("No backup yet. (%1)").arg(now));
         r.primary->setText(info.exists ? tr("Put back") : tr("Back up"));
-        r.primary->setEnabled(pluto && (info.exists || info.liveFiles > 0));
+        r.primary->setEnabled(pluto && (info.exists || info.liveFiles > 0 || kinds[i] == QLatin1String("controller")));
         r.secondary->setText(tr("Open"));
         r.secondary->setVisible(info.exists);
         r.tertiary->setEnabled(pluto);

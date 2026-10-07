@@ -41,7 +41,7 @@ if ((-not $NsisDir) -or (-not (Test-Path $makensis))) {
 # behind by an earlier run, minus local settings (they stay per-machine).
 if (Test-Path $Stage) { Remove-Item $Stage -Recurse -Force }
 New-Item -ItemType Directory -Force -Path $Stage | Out-Null
-robocopy $Dist $Stage /E /XD cache /XF *.zip QualityOfLife.ini uninstall.probe /NFL /NDL /NJH /NJS | Out-Null
+robocopy $Dist $Stage /E /XD cache /XF *.zip *.log *.pid QualityOfLife.ini uninstall.probe /NFL /NDL /NJH /NJS | Out-Null
 if ($LASTEXITCODE -ge 8) { throw "stage copy failed ($LASTEXITCODE)" }
 
 # Fail the release before packaging if any non-Windows DLL import is absent or
